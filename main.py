@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from clinical_ai import gerar_dica_ia, gerar_explicacao_ia, status_ia
+from clinical_ai import explicacao_salva, gerar_dica_ia, gerar_explicacao_ia, status_ia
 from conteudo_temas import CONTEUDO, ESTRATEGIA_POR_AREA
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -263,7 +263,7 @@ def answer_question(data: AnswerRequest):
         "anulada": official == "ANULADA",
         "resposta_correta_texto": q["resposta_correta_texto"],
         "especialidade": q["especialidade"], "tema": q["tema"],
-        "explicacao_ia": gerar_explicacao_ia(q),
+        "explicacao_ia": explicacao_salva(q),   # só se já existir; senão o app busca /api/ia-explicar em seguida
     }
 
 

@@ -1,9 +1,9 @@
 """
-MedQuest – IA Tutora Híbrida
+CTi – IA Tutora
 ============================
-1) Se houver chave de LLM configurada (MEDQUEST_LLM_API_KEY / OPENAI_API_KEY), gera o comentário
-   com um modelo de linguagem (API compatível com OpenAI) e guarda em cache (ia_cache.json).
-2) Sem chave (ou em caso de falha), usa o MOTOR LOCAL baseado em regras:
+O comentário das questões vem SEMPRE de um modelo de IA (ver ia_provedores.py): salvo → Gemini → NVIDIA.
+Sem IA disponível, a tela mostra "IA indisponível" – nunca um comentário genérico.
+O MOTOR LOCAL abaixo (regras) fica só como ferramenta interna/legado:
    - lê o comando da questão (diagnóstico, conduta, exame, invertida "INCORRETA/EXCETO"...),
    - extrai perfil, sinais vitais e sinais de alarme do caso,
    - reconhece entidades clínicas nas alternativas (kb_medica.KB) e checa as pistas no enunciado,
@@ -22,27 +22,13 @@ from conteudo_temas import CONTEUDO, conteudo_do_tema
 from kb_medica import KB
 
 LETRAS = "ABCDEFGH"
-CACHE_PATH = os.path.join(os.path.dirname(__file__), "ia_cache.json")
-_cache_lock = threading.Lock()
-try:
-    with open(CACHE_PATH, encoding="utf-8") as _f:
-        _CACHE = json.load(_f)
-except Exception:
-    _CACHE = {}
-
-LLM_KEY = os.environ.get("MEDQUEST_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
-LLM_URL = os.environ.get("MEDQUEST_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-LLM_MODEL = os.environ.get("MEDQUEST_LLM_MODEL", "gpt-4o-mini")
 
 
 def status_ia() -> dict:
-    return {
-        "modo": "hibrido-llm" if LLM_KEY else "motor-local",
-        "llm_configurado": bool(LLM_KEY),
-        "modelo": LLM_MODEL if LLM_KEY else None,
-        "explicacoes_em_cache": len(_CACHE),
-        "entidades_kb": len(KB),
-    }
+    import ia_provedores
+    st = ia_provedores.status()
+    st["modo"] = "ia" if ia_provedores.PROVEDORES else "sem-chave"
+    return st
 
 
 # ----------------------------------------------------------------------------- utilidades
@@ -421,7 +407,7 @@ def explicar_local(q: dict) -> dict:
     if bt:
         bizu.append(bt)
     if not bizu:
-        bizu.append("Leia o comando primeiro, depois o caso buscando o achado que só UMA alternativa explica.")
+        pass
     if not A["tipo"]["invertida"] and any(termos_absolutos(a["texto"]) for a in A["alts"] if a["letra"] != gab):
         bizu.append("Desconfie das alternativas com termos absolutos (sempre, nunca, somente).")
     bizu_txt = " ".join(dict.fromkeys(bizu))
@@ -438,8 +424,6 @@ def explicar_local(q: dict) -> dict:
     foco = _foco(cont, ref, 3, resposta=corr["texto"] if corr and not anulada else "")
     if corr and corr["ents"] and not anulada:
         foco = [f"{corr['ents'][0]['nome']}: {corr['ents'][0]['resumo']}."] + foco[:2]
-    if not foco:
-        foco = ["Releia o comando e identifique o achado que só a alternativa correta explica.", "Monte o raciocínio: perfil → achado-chave → hipótese → conduta."]
 
     resumo = ("Anulada – revise o tema." if anulada else
               f"Gabarito {gab}: {curto(corr['texto'], 140)}" + (f" — {chave}" if chave else ""))
@@ -476,66 +460,58 @@ def dica_local(q: dict) -> dict:
     return {"fonte": "motor-local", "tema": q.get("tema"), "comando": A["cmd"], "dicas": passos}
 
 
-# ----------------------------------------------------------------------------- LLM opcional
-PROMPT = """Você é um preceptor de medicina que prepara alunos para Revalida/ENAMED/CONAREM/USMLE.
-Analise a questão abaixo de forma INDEPENDENTE, em português do Brasil, seguindo diretrizes vigentes (MS/SUS e sociedades).
-O gabarito informado no banco é {gab}. Não invente justificativa para defendê-lo: se a evidência clínica apontar outra
-alternativa, ou se a questão depender de imagem/dado ausente, diga isso claramente nos campos "concorda_com_gabarito" e "alerta_revisao".
-Responda APENAS com JSON: {{"concorda_com_gabarito": bool, "alternativa_sugerida": str, "alerta_revisao": str ("" se nada a sinalizar),
-"resumo": str, "porque_correta": str, "alternativas": [{{"letra": str, "analise": str}}],
-"bizu": str (lógica curta para matar a questão), "pontos_atencao": [str], "foco": [str] (3 pontos high-yield DESTA doença/conduta, não de temas vizinhos)}}.
-Tema: {tema}
-Enunciado: {enun}
-Alternativas:
-{alts}"""
+# ----------------------------------------------------------------------------- IA (ia_provedores.py)
+def _lista(v):
+    return [str(x) for x in v] if isinstance(v, list) else ([str(v)] if v else [])
 
 
-def explicar_llm(q: dict) -> dict | None:
-    if not LLM_KEY:
-        return None
-    key = f"{q['id']}"
-    if key in _CACHE:
-        return _CACHE[key]
-    alts = "\n".join(f"{l}) {t}" for l, t in alternativas(q))
-    body = {
-        "model": LLM_MODEL, "temperature": 0.2, "response_format": {"type": "json_object"},
-        "messages": [{"role": "user", "content": PROMPT.format(gab=q.get("gabarito_oficial"), tema=q.get("tema"), enun=q.get("enunciado"), alts=alts)}],
+def _alerta(p: dict) -> str:
+    txt = (p.get("alerta_revisao") or "").strip()
+    if p.get("concorda_com_gabarito") is False:
+        return txt or f"POSSÍVEL INCONSISTÊNCIA DE GABARITO: a IA chegou à alternativa {p.get('alternativa_sugerida') or '?'} – questão sinalizada para revisão humana."
+    return txt
+
+
+def formatar(q: dict, p: dict) -> dict:
+    gab = q.get("gabarito_oficial", "")
+    por_letra = {str(a.get("letra", "")).strip().upper()[:1]: a.get("analise", "") for a in p.get("alternativas", [])}
+    alts = [{"letra": l, "texto": t, "correta": (l == gab or gab == "ANULADA"), "analise": por_letra.get(l, "")}
+            for l, t in alternativas(q)]
+    tema = q.get("tema") or "Clínica Geral"
+    return {
+        "fonte": "ia", "modelo": p.get("modelo"), "tema": tema, "area": q.get("especialidade"),
+        "referencia": p.get("referencia") or "",
+        "resumo": p.get("resumo", ""), "achado_chave": p.get("achado_chave", ""), "conceito_cobrado": p.get("conceito_cobrado", ""),
+        "porque_correta": p.get("porque_correta", ""), "alternativas": alts, "bizu": p.get("bizu", ""),
+        "pontos_atencao": _lista(p.get("pontos_atencao")), "foco": _lista(p.get("foco")),
+        "gabarito": gab, "alerta_revisao": _alerta(p), "dica": p.get("dica", ""),
     }
-    try:
-        req = urllib.request.Request(f"{LLM_URL}/chat/completions", data=json.dumps(body).encode(),
-                                     headers={"Authorization": f"Bearer {LLM_KEY}", "Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=40) as r:
-            data = json.loads(json.loads(r.read())["choices"][0]["message"]["content"])
-        base = explicar_local(q)  # mantém metadados + textos das alternativas
-        por_letra = {a.get("letra"): a.get("analise", "") for a in data.get("alternativas", [])}
-        for a in base["alternativas"]:
-            if por_letra.get(a["letra"]):
-                a["analise"] = por_letra[a["letra"]]
-        for k in ("resumo", "porque_correta", "bizu", "pontos_atencao", "foco"):
-            if data.get(k):
-                base[k] = data[k]
-        base["fonte"] = f"llm:{LLM_MODEL}"
-        if data.get("concorda_com_gabarito") is False or (data.get("alerta_revisao") or "").strip():
-            # divergência IA x gabarito: NÃO altera o gabarito; sinaliza para revisão humana
-            base["alerta_revisao"] = (data.get("alerta_revisao") or "").strip() or \
-                f"A IA sugere a alternativa {data.get('alternativa_sugerida') or '?'} – questão sinalizada para revisão humana."
-            print(f"[IA] divergência sinalizada na questão {q['id']}: {base['alerta_revisao'][:160]}")
-        with _cache_lock:
-            _CACHE[key] = base
-            try:  # em hospedagem serverless (Vercel) o disco é somente-leitura: o cache fica só na memória
-                with open(CACHE_PATH, "w", encoding="utf-8") as f:
-                    json.dump(_CACHE, f, ensure_ascii=False)
-            except OSError:
-                pass
-        return base
-    except Exception as ex:  # noqa: BLE001
-        print("[IA] LLM indisponível, usando motor local:", ex)
-        return None
+
+
+def explicacao_salva(q: dict):
+    """Só o que já existe (não chama API) – usado na correção, para o gabarito aparecer na hora."""
+    import ia_provedores
+    p = ia_provedores.salvo(q)
+    return formatar(q, p) if p else None
 
 
 def gerar_explicacao_ia(q: dict) -> dict:
-    return explicar_llm(q) or explicar_local(q)
+    """Comentário salvo → Gemini → NVIDIA → 'indisponível'. Nunca devolve comentário genérico."""
+    import ia_provedores
+    p = ia_provedores.salvo(q)
+    if not p:
+        p, motivo = ia_provedores.gerar(q)
+        if not p:
+            return {"fonte": "indisponivel", "tema": q.get("tema"), "gabarito": q.get("gabarito_oficial"), "motivo": motivo}
+    return formatar(q, p)
 
 
 def gerar_dica_ia(q: dict) -> dict:
-    return dica_local(q)
+    """A dica vem do mesmo comentário (uma requisição serve para dica + explicação); só o campo 'dica' é enviado."""
+    import ia_provedores
+    p = ia_provedores.salvo(q)
+    if not p:
+        p, motivo = ia_provedores.gerar(q)
+        if not p:
+            return {"fonte": "indisponivel", "tema": q.get("tema"), "dicas": [], "motivo": motivo}
+    return {"fonte": "ia", "tema": q.get("tema"), "dicas": [p.get("dica")] if p.get("dica") else []}

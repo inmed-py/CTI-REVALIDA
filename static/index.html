@@ -612,6 +612,13 @@ const addDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d
 const fmtData = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', {weekday:'short', day:'2-digit', month:'2-digit'});
 const pct = (a, n) => n ? Math.round(100 * a / n) : 0;
 const ls = { get:(k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set:(k, v) => localStorage.setItem(k, JSON.stringify(v)) };
+let IAC = ls.get('cti_ia_cache', {});
+const iaCache = id => IAC[id];
+function iaGuardar(id, x){
+  if (!x || x.fonte !== 'ia') return;
+  IAC[id] = x; const ks = Object.keys(IAC); if (ks.length > 1500) delete IAC[ks[0]];
+  try { ls.set('cti_ia_cache', IAC); } catch { const k = Object.keys(IAC); k.slice(0, 300).forEach(i => delete IAC[i]); try { ls.set('cti_ia_cache', IAC); } catch {} }
+}
 function toast(m){ const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2400); }
 async function api(url, opt){
   let r; try { r = await fetch(url, opt); } catch { throw new Error('sem conexão com a internet. Esta ação precisa estar on-line.'); }
@@ -948,7 +955,11 @@ function renderQuestao(){
   $('#qzPrev').onclick = () => { S.idx--; renderQuestao(); };
   $('#qzNext').onclick = () => { if (prova && S.idx === S.questoes.length - 1) { S.idx = 0; return renderQuestao(); } S.idx++; renderQuestao(); };
   $('#qzConf') && ($('#qzConf').onclick = () => confirmar(q));
-  $('#qzDicaBtn') && ($('#qzDicaBtn').onclick = async () => { S.dicas[q.id] = await api('/api/ia-dica/' + q.id); $('#qzDica').innerHTML = dicaHtml(S.dicas[q.id]); });
+  $('#qzDicaBtn') && ($('#qzDicaBtn').onclick = async () => {
+    $('#qzDica').innerHTML = `<div class="dica small muted">${ic('bulb')} Buscando a dica…</div>`;
+    const c = iaCache(q.id);
+    let d; try { d = c && c.dica ? {fonte:'ia', dicas:[c.dica]} : await api('/api/ia-dica/' + q.id); } catch(e){ d = {fonte:'indisponivel', dicas:[]}; }
+    S.dicas[q.id] = d; $('#qzDica').innerHTML = dicaHtml(d); });
   $('#qzFinal') && ($('#qzFinal').onclick = finalizarProva);
   ligarFav('#qzCard');
   if (respondida && !S.explic[q.id]) carregarIA(q, r);
@@ -963,31 +974,48 @@ async function confirmar(q){
   try {
     const r = await post('/api/responder', {question_id:q.id, selected_option:sel});
     S.respostas[q.id] = {sel, acertou:r.is_correct, gab:r.gabarito_oficial};
-    S.explic[q.id] = r.explicacao_ia;
+    S.explic[q.id] = r.explicacao_ia || iaCache(q.id) || undefined; if (r.explicacao_ia) iaGuardar(q.id, r.explicacao_ia);
     registrar(q, r.is_correct, S.tipo);
     S.onResposta && S.onResposta(q, sel, r.is_correct, r.gabarito_oficial);
     renderQuestao();
     setTimeout(() => $('#qzIA')?.scrollIntoView({behavior:'smooth', block:'start'}), 80);
   } catch(e){ toast('Erro: ' + e.message); $('#qzConf').disabled = false; }
 }
-async function carregarIA(q, r){
-  $('#qzIA').innerHTML = `<div class="ia"><b class="row" style="gap:6px">${ic('ai')}IA Tutora</b> <span class="muted small">analisando a questão…</span></div>`;
-  try { S.explic[q.id] = await api('/api/ia-explicar/' + q.id); if (S && S.questoes[S.idx]?.id === q.id) $('#qzIA').innerHTML = iaHtml(S.explic[q.id], r); } catch { $('#qzIA').innerHTML = ''; }
+/* ---------- IA: comentário salvo no aparelho → servidor (salvo → Gemini → fallback Gemini → NVIDIA) → "indisponível" */
+async function buscarIA(id){
+  if (IAC[id]) return IAC[id];
+  let x; try { x = await api('/api/ia-explicar/' + id); } catch(e){ x = {fonte:'indisponivel', motivo:e.message}; }
+  iaGuardar(id, x); return x;
 }
-function dicaHtml(d){ return `<div class="dica"><b>${ic('bulb')} Dica da IA</b> <span class="tiny muted">(não revela a resposta)</span><ul>${d.dicas.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`; }
+function iaIndispHtml(x, id){
+  return `<div class="ia"><b class="row" style="gap:6px">${ic('ai')}IA Tutora</b>
+    <div class="imgwarn" style="margin-top:8px">${ic('alert')} O comentário da IA não está disponível agora. Pode ser o limite diário do plano grátis ou falta de conexão. O gabarito acima é o oficial.</div>
+    <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${esc(x.motivo || '')}</span><button class="btn sec sm" data-ia-retry="${id}">${ic('ai')}Tentar de novo</button></div></div>`;
+}
+async function carregarIA(q, r){
+  $('#qzIA').innerHTML = `<div class="ia"><b class="row" style="gap:6px">${ic('ai')}IA Tutora</b> <span class="muted small">analisando a questão… (a primeira vez pode levar alguns segundos; depois fica salvo)</span></div>`;
+  const x = await buscarIA(q.id);
+  if (!(S && S.questoes[S.idx]?.id === q.id)) return;
+  if (x.fonte === 'ia'){ S.explic[q.id] = x; $('#qzIA').innerHTML = iaHtml(x, r); }
+  else { $('#qzIA').innerHTML = iaIndispHtml(x, q.id); $('#qzIA [data-ia-retry]').onclick = () => carregarIA(q, r); }
+}
+function dicaHtml(d){ if (d.fonte === 'indisponivel' || !d.dicas?.length) return `<div class="dica small">${ic('bulb')} Dica indisponível agora (limite da IA ou sem conexão). Tente de novo mais tarde.</div>`;
+  return `<div class="dica"><b>${ic('bulb')} Dica da IA</b> <span class="tiny muted">(não revela a resposta)</span><ul>${d.dicas.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`; }
 function iaHtml(x, r){
-  const fonte = x.fonte === 'motor-local' ? 'motor clínico local (regras + base high-yield)' : x.fonte;
+  if (!x || x.fonte !== 'ia') return '';
+  const alerta = x.alerta_revisao ? x.alerta_revisao.replace(/^POSSÍVEL INCONSISTÊNCIA DE GABARITO:\s*/i, '') : '';
   return `<div class="ia">
-    <div class="row" style="justify-content:space-between"><b class="row" style="gap:6px">${ic('ai')}IA Tutora · revisão da questão</b><span class="tiny muted">${esc(fonte)}</span></div>
-    ${x.alerta_revisao ? `<div class="imgwarn">${ic('flag')} <b>Em revisão:</b> ${esc(x.alerta_revisao)} O gabarito exibido é o oficial da banca.</div>` : ''}
+    <div class="row" style="justify-content:space-between"><b class="row" style="gap:6px">${ic('ai')}IA Tutora · revisão da questão</b><span class="tiny muted">${esc(x.modelo || 'IA')}</span></div>
+    ${x.alerta_revisao ? `<div class="imgwarn">${ic('flag')} <b>${/^POSSÍVEL INCONSISTÊNCIA/i.test(x.alerta_revisao) ? 'Possível inconsistência de gabarito' : 'Atenção'}:</b> ${esc(alerta)} O gabarito exibido é o oficial da banca.</div>` : ''}
     <h4>${ic('check')}${esc(x.resumo)}</h4>
-    <div>${esc(x.porque_correta)}</div>
+    ${x.achado_chave || x.conceito_cobrado ? `<div class="row small" style="gap:6px;flex-wrap:wrap;margin:6px 0">${x.achado_chave ? `<span class="pill pri" style="white-space:normal">${ic('search')}Achado-chave: ${esc(x.achado_chave)}</span>` : ''}${x.conceito_cobrado ? `<span class="pill" style="white-space:normal">${ic('target')}Conceito cobrado: ${esc(x.conceito_cobrado)}</span>` : ''}</div>` : ''}
+    ${x.porque_correta ? `<div>${esc(x.porque_correta)}</div>` : ''}
     <h4>${ic('search')}Alternativa por alternativa</h4>
-    ${x.alternativas.map(a => `<div class="alt-an ${a.correta ? 'c' : 'w'}"><b>${a.letra}) ${a.correta ? '✔' : '✘'}</b> <span class="muted">${esc(a.texto.slice(0, 140))}${a.texto.length > 140 ? '…' : ''}</span><br>${esc(a.analise)}</div>`).join('')}
-    <h4>${ic('target')}Bizu para matar a questão</h4><div class="bizu">${esc(x.bizu)}</div>
-    ${x.pontos_atencao?.length ? `<h4>${ic('alert')}Pontos de atenção</h4><ul>${x.pontos_atencao.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
-    <h4>${ic('pin')}Foco no que importa · ${esc(x.tema)}</h4><ul>${x.foco.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
-    <div class="row small muted" style="margin-top:10px;justify-content:space-between"><span class="row" style="gap:5px">${ic('book')}${esc(x.referencia)}</span>
+    ${x.alternativas.map(a => `<div class="alt-an ${a.correta ? 'c' : 'w'}"><b>${a.letra}) ${a.correta ? '✔' : '✘'}</b> <span class="muted">${esc(a.texto.slice(0, 140))}${a.texto.length > 140 ? '…' : ''}</span>${a.analise ? '<br>' + esc(a.analise) : ''}</div>`).join('')}
+    ${x.pontos_atencao?.length ? `<h4>${ic('alert')}Pegadinhas da banca</h4><ul>${x.pontos_atencao.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
+    ${x.bizu ? `<h4>${ic('target')}Resumo para memorizar</h4><div class="bizu">${esc(x.bizu)}</div>` : ''}
+    ${x.foco?.length ? `<h4>${ic('pin')}Foco no que importa · ${esc(x.tema)}</h4><ul>${x.foco.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
+    <div class="row small muted" style="margin-top:10px;justify-content:space-between"><span style="flex:1;min-width:0">${x.referencia ? ic('book') + ' ' + esc(x.referencia) : ''}</span>
       <button class="btn sec sm" onclick="abrirReforco('${esc(x.tema)}')">${ic('trilha')}Revisar este tema na Trilha</button></div>
   </div>`;
 }
@@ -1112,9 +1140,18 @@ function renderEvolucao(){
 }
 $('#dEvArea').onchange = renderEvolucao; $('#dEvPer').onchange = renderEvolucao;
 window.treinarArea = (area, tema) => { mostrar('simulado'); $('#sArea').value = area || (tema ? INDICE.find(i => i.tema === tema)?.area : '') || ''; $('#sArea').onchange(); $('#sTema').value = tema || ''; $('#sModo').value = 'treino'; $('#sN').value = '10'; $('#sStart').click(); };
-$('#dExport').onclick = () => { const b = new Blob([JSON.stringify({medquest_historico:HIST, medquest_erros:ERROS, medquest_missao:MISSAO, medquest_planner:ls.get('medquest_planner', {})})], {type:'application/json'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `cti_progresso_${hoje()}.json`; a.click(); };
-$('#dImport').onchange = async e => { try { const d = JSON.parse(await e.target.files[0].text()); HIST = d.medquest_historico || []; ERROS = d.medquest_erros || []; MISSAO = d.medquest_missao || MISSAO; if (d.medquest_planner) ls.set('medquest_planner', d.medquest_planner); salvar(); renderDesempenho(); toast('Progresso importado!'); } catch { toast('Arquivo inválido'); } };
+const CHAVES_APP = k => k.startsWith('medquest_') || k.startsWith('cti_');
+$('#dExport').onclick = () => {   // backup completo: histórico, revisões, missões, planner, favoritos, metas, perfil, simulados…
+  const d = {_cti_backup:1, _data:new Date().toISOString()};
+  for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if (CHAVES_APP(k)) d[k] = ls.get(k, null); }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(d)], {type:'application/json'}));
+  a.download = `cti_progresso_${hoje()}.json`; a.click(); toast('Backup baixado. Importe no outro aparelho em Desempenho → Dados.'); };
+$('#dImport').onchange = async e => { try {
+    const d = JSON.parse(await e.target.files[0].text());
+    const ks = Object.keys(d).filter(CHAVES_APP); if (!ks.length) throw 0;
+    if (!confirm('Substituir o progresso deste aparelho pelo do arquivo?')) return;
+    ks.forEach(k => ls.set(k, d[k])); toast('Progresso importado!'); setTimeout(() => location.reload(), 600);
+  } catch { toast('Arquivo inválido'); } };
 $('#dReset').onclick = () => { if (!confirm('Apagar TODO o histórico, erros, missões e metas?')) return; ls.set('cti_simulados', []); HIST = []; ERROS = []; MISSAO = {streak:0, ultimoConcluido:null, vistas:[], dias:{}}; salvar(); renderDesempenho(); };
 
 /* ============================================================ REFORÇO & PLANNER */
@@ -1297,7 +1334,7 @@ async function carregarDestaque(){
   if (!id){ const pool = INDICE.filter(i => i.valida && !i.dup && !i.img); let h = 0; for (const c of d + semente()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     id = pool[h % pool.length].id; ls.set('cti_destaque', {data:d, id}); }
   try { const q = await api('/api/questoes/' + id); DQ = {q, resp:salvo.data === d ? salvo.resp || null : null, exp:null};
-    renderDestaque(); if (DQ.resp) DQ.exp = await api('/api/ia-explicar/' + id), renderDestaque(); }
+    renderDestaque(); if (DQ.resp){ DQ.exp = await buscarIA(id); renderDestaque(); } }
   catch { $('#pnDestaque').innerHTML = '<div class="empty small">Não foi possível carregar a questão.</div>'; }
 }
 function renderDestaque(){
@@ -1310,7 +1347,7 @@ function renderDestaque(){
         return `<button class="alt ${c}" data-l="${l}" ${resp ? 'disabled' : ''}><span class="lt">${l}</span><span class="tx">${esc(q['alt_' + l])}</span></button>`; }).join('')}</div></div>
       <div class="resp-box ${resp ? '' : 'wait'}">${resp ? `<b class="t">${ic('bulb')}Resposta correta: ${resp.gab}</b>
         <div style="margin-bottom:6px;font-weight:700;color:${resp.acertou ? 'var(--ok)' : 'var(--bad)'}">${resp.acertou ? 'Você acertou!' : `Você marcou ${resp.sel}.`}</div>
-        <div>${esc(DQ.exp ? DQ.exp.porque_correta : 'Carregando a explicação da IA…')}</div>
+        <div>${esc(!DQ.exp ? 'Carregando a explicação da IA…' : DQ.exp.fonte === 'ia' ? DQ.exp.porque_correta : 'Comentário da IA indisponível agora (limite diário ou sem conexão).')}</div>
         <button class="btn sm" style="margin-top:10px" id="dqCompleta">Ver explicação completa ${ic('arrow')}</button>`
       : `<b class="row" style="gap:6px;color:var(--tx)">${ic('bulb')}Sua vez!</b><div style="margin-top:4px">Escolha uma alternativa para ver a resposta correta e a explicação da IA tutora. Uma nova questão aparece a cada dia.</div>`}</div></div>`;
   $$('#dqAlts .alt').forEach(b => b.onclick = () => responderDestaque(b.dataset.l));
@@ -1319,16 +1356,17 @@ function renderDestaque(){
 async function responderDestaque(sel){
   if (!DQ || DQ.resp) return;
   const r = await post('/api/responder', {question_id:DQ.q.id, selected_option:sel});
-  DQ.resp = {sel, acertou:r.is_correct, gab:r.gabarito_oficial}; DQ.exp = r.explicacao_ia;
+  DQ.resp = {sel, acertou:r.is_correct, gab:r.gabarito_oficial}; DQ.exp = r.explicacao_ia || null; if (DQ.exp) iaGuardar(DQ.q.id, DQ.exp);
   registrar(DQ.q, r.is_correct, 'destaque');
   ls.set('cti_destaque', {data:hoje(), id:DQ.q.id, resp:DQ.resp});
   renderPainel();
+  if (!DQ.exp){ DQ.exp = await buscarIA(DQ.q.id); renderDestaque(); }
 }
 function verDestaque(){
   if (!DQ) return;
   const q = DQ.q, cfg = {tipo:'banco', titulo:'Questão em destaque', sub:`${q.edicao} · Q${q.numero}`, questoes:[q], modo:'treino', onFim:() => mostrar('painel'),
     onResposta:(qq, sel, acertou, gab) => { DQ.resp = {sel, acertou, gab}; ls.set('cti_destaque', {data:hoje(), id:q.id, resp:DQ.resp}); }};
-  if (DQ.resp){ cfg.respostas = {[q.id]:DQ.resp}; if (DQ.exp) cfg.explic = {[q.id]:DQ.exp}; }
+  if (DQ.resp){ cfg.respostas = {[q.id]:DQ.resp}; if (DQ.exp && DQ.exp.fonte === 'ia') cfg.explic = {[q.id]:DQ.exp}; }
   iniciarSessao(cfg);
 }
 $('#dqVer').onclick = verDestaque;
