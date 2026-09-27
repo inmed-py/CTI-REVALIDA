@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from clinical_ai import explicacao_salva, gerar_dica_ia, gerar_explicacao_ia, status_ia
 from conteudo_temas import CONTEUDO, ESTRATEGIA_POR_AREA
+from atualizacoes import AREAS as AREAS_ATUALIZACOES, buscar_atualizacoes
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(BASE, "static")
@@ -305,6 +306,17 @@ def reforco(tema: Optional[str] = None):
         contagem[q["tema"]] = contagem.get(q["tema"], 0) + 1
     temas = {t: dict(c, questoes_disponiveis=contagem.get(t, 0)) for t, c in CONTEUDO.items() if not tema or t == tema}
     return {"temas": temas, "estrategia_por_area": ESTRATEGIA_POR_AREA}
+
+
+@app.get("/api/atualizacoes")
+def atualizacoes(area: str = "Todas", force: bool = False, dias: int = Query(120, ge=7, le=365)):
+    """Radar de atualizações médicas: Google Search Grounding gratuito quando disponível, com fallback RSS gratuito."""
+    return buscar_atualizacoes(area=area, force=force, dias=dias)
+
+
+@app.get("/api/atualizacoes/areas")
+def atualizacoes_areas():
+    return {"areas": AREAS_ATUALIZACOES}
 
 
 @app.get("/sw.js", include_in_schema=False)

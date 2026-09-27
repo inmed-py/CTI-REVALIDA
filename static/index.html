@@ -125,6 +125,17 @@ select:focus,input:focus{outline:2px solid var(--redl);border-color:var(--red)}
 .bizu{background:var(--warnb);border-radius:var(--r2);padding:10px 12px;font-weight:600}
 .dica{border:1.5px dashed var(--red);border-radius:var(--r2);padding:10px 14px;margin:10px 0;background:var(--redl)}
 .imgwarn{background:var(--warnb);color:var(--warn);border-radius:var(--r1);padding:6px 10px;font-size:.85rem;margin-bottom:8px}
+/* ---------- radar de atualizações ---------- */
+.upd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}
+.upd-card{background:var(--card);border:1px solid var(--bd);border-radius:var(--r3);padding:15px;display:flex;flex-direction:column;gap:9px;box-shadow:var(--sh);min-width:0}
+.upd-card:hover{border-color:#cbd5e1}.upd-card h3{margin:0;font-size:1rem;line-height:1.3;overflow-wrap:anywhere}
+.upd-card p{margin:0;color:var(--mut);font-size:.87rem;line-height:1.52;overflow-wrap:anywhere}
+.upd-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.upd-source{display:flex;gap:8px;align-items:flex-start;border-top:1px solid var(--bd);padding-top:10px;margin-top:auto;min-width:0}
+.upd-source>div{min-width:0;flex:1}.upd-source b,.upd-source span{display:block;overflow-wrap:anywhere}.upd-source span{font-size:.74rem;color:var(--mut)}
+.upd-link{flex:none;color:var(--red);font-weight:700;text-decoration:none;font-size:.8rem;display:inline-flex;align-items:center;gap:4px}.upd-link:hover{text-decoration:underline}
+.src-oficial{background:var(--okb);color:var(--ok);border-color:transparent}.src-verificada{background:var(--warnb);color:var(--warn);border-color:transparent}
+.upd-note{border-left:4px solid var(--red);padding:10px 12px;background:var(--card2);border-radius:0 var(--r1) var(--r1) 0;font-size:.82rem;color:var(--mut)}
+.upd-channels{display:flex;gap:8px;flex-wrap:wrap}.upd-channels a{font-size:.78rem;text-decoration:none;border:1px solid var(--bd);border-radius:999px;padding:5px 9px;background:var(--card);color:var(--tx)}.upd-channels a:hover{border-color:var(--red);color:var(--red)}
 /* ---------- tabelas/listas ---------- */
 table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:top}th{color:var(--mut);font-size:.7rem;text-transform:uppercase;letter-spacing:.08em}
 .list-item{border:1px solid var(--bd);border-radius:var(--r2);padding:12px 14px;margin-bottom:8px;background:var(--card);cursor:pointer;transition:.12s}.list-item:hover{border-color:var(--red);box-shadow:var(--sh)}
@@ -250,6 +261,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   .ia ul{padding-left:20px;margin:8px 0}.ia .alt-an{padding:8px 9px;line-height:1.45}
   .ia-footer{flex-direction:column;align-items:stretch;gap:10px}.ia-ref{width:100%;font-size:.76rem}.ia-footer .btn{width:100%;justify-content:center;white-space:normal;text-align:center}
   .nav-q{gap:8px}.nav-q>.row{width:100%}.nav-q .btn{min-height:42px}
+  .upd-grid{grid-template-columns:1fr}.upd-card{padding:13px}.upd-source{flex-wrap:wrap}.upd-link{width:100%;justify-content:flex-start}.upd-controls .f{min-width:100%}
 }
 </style>
 </head>
@@ -300,6 +312,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   <symbol id="i-img" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
   <symbol id="i-ai" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4M9 12v1M15 12v1M9 16h6M2 12v2M22 12v2"/></symbol>
   <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M2 12h5l2-4 3 9 3-12 2 7h5"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12 18 7M12 3v2M21 12h-2M12 21v-2M3 12h2"/><circle cx="12" cy="12" r="1"/></symbol>
 </svg>
 
 <header class="hdr">
@@ -326,6 +339,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
       <button data-v="simulado"><svg class="i"><use href="#i-simulado"/></svg>Simulados</button>
       <button data-v="desempenho"><svg class="i"><use href="#i-bars"/></svg>Desempenho</button>
       <button data-v="reforco"><svg class="i"><use href="#i-trilha"/></svg>Trilhas</button>
+      <button data-v="atualizacoes"><svg class="i"><use href="#i-radar"/></svg>Atualizações</button>
       <button data-v="erros"><svg class="i"><use href="#i-rev"/></svg>Revisões <span class="badge" id="badgeErros" hidden>0</span></button>
     </nav>
     <div class="hdr-act">
@@ -347,6 +361,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   <button data-v="erros"><svg class="i"><use href="#i-rev"/></svg>Revisões <span class="badge" id="badgeSide" hidden>0</span></button>
   <button data-v="desempenho"><svg class="i"><use href="#i-bars"/></svg>Desempenho</button>
   <button data-v="reforco"><svg class="i"><use href="#i-trilha"/></svg>Trilhas de Estudo</button>
+  <button data-v="atualizacoes"><svg class="i"><use href="#i-radar"/></svg>Atualizações</button>
   <button data-v="favoritos"><svg class="i"><use href="#i-star"/></svg>Favoritos</button>
   <div class="side-missao"><span>Missão de hoje</span><b id="sideMissao">0/15</b><div class="progress"><i id="sideMissaoBar" style="width:0"></i></div></div>
 </aside>
@@ -581,6 +596,33 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   <div class="grid g2" id="rTemas"></div>
 </section>
 
+
+<!-- ======================= ATUALIZAÇÕES ======================= -->
+<section class="view" id="view-atualizacoes">
+  <div class="banner">
+    <div class="kick">Radar médico</div>
+    <h2>Atualizações para prova e prática</h2>
+    <p>Busca mudanças recentes em diretrizes, protocolos, PCDT, notas técnicas e informações do INEP. O CTi mostra só um resumo curto e leva você à fonte original.</p>
+  </div>
+  <div class="card">
+    <div class="row upd-controls">
+      <label class="f">Área / matéria<select id="uArea"></select></label>
+      <label class="f">Período<select id="uDias"><option value="60">Últimos 60 dias</option><option value="120" selected>Últimos 120 dias</option><option value="365">Último ano</option></select></label>
+      <label class="f">Tipo de fonte<select id="uFonte"><option value="">Todas as fontes verificadas</option><option value="oficial">Somente fontes oficiais</option><option value="verificada">Fontes secundárias verificadas</option></select></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="uAtualizar"><svg class="i"><use href="#i-radar"/></svg>Atualizar agora</button>
+      <span class="small muted" id="uStatus">A busca só é feita quando você abre esta área ou toca em atualizar.</span>
+    </div>
+    <div class="upd-note" style="margin-top:12px"><b>Custo zero:</b> esta função usa apenas a faixa gratuita configurada e possui fallback de busca RSS sem API. Fontes secundárias são marcadas claramente; para conduta clínica, confirme sempre a publicação original.</div>
+  </div>
+  <div id="uLista"><div class="card empty">Abra esta área para buscar as atualizações.</div></div>
+  <div class="card" id="uCanais" hidden>
+    <div class="sec-t"><span>Canais acompanhados</span><span>atalhos para as fontes</span></div>
+    <div class="upd-channels" id="uCanaisLista"></div>
+  </div>
+</section>
+
 <!-- ======================= QUIZ (compartilhado) ======================= -->
 <section class="view" id="view-quiz">
   <div class="card">
@@ -607,6 +649,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   <button class="it" data-go="missao"><svg class="i"><use href="#i-target"/></svg>Missão Diária</button>
   <button class="it" data-go="erros"><svg class="i"><use href="#i-rev"/></svg>Revisões (Caderno de Erros)</button>
   <button class="it" data-go="reforco"><svg class="i"><use href="#i-trilha"/></svg>Trilhas de Estudo</button>
+  <button class="it" data-go="atualizacoes"><svg class="i"><use href="#i-radar"/></svg>Atualizações médicas</button>
   <button class="it" data-go="favoritos"><svg class="i"><use href="#i-star"/></svg>Favoritos</button>
   <button class="it" id="shPerfil"><svg class="i"><use href="#i-user"/></svg>Meu perfil</button>
   <button class="it" id="shTema"><svg class="i"><use href="#i-moon"/></svg>Tema claro/escuro</button>
@@ -655,7 +698,7 @@ const salvar = () => { ls.set('medquest_historico', HIST.slice(-20000)); ls.set(
 let STATS = null, INDICE = [], IDX = {}, REFORCO = null;
 
 /* ============================================================ navegação interna do PWA */
-const ROTAS = new Set(['painel','missao','banco','simulado','erros','favoritos','desempenho','reforco','quiz']);
+const ROTAS = new Set(['painel','missao','banco','simulado','erros','favoritos','desempenho','reforco','atualizacoes','quiz']);
 let NAV_READY = false;
 function viewAtual(){
   const v = $('.view.on');
@@ -754,6 +797,7 @@ function mostrar(v, opts = {}){
   if (v === 'banco' && !$('#bLista').children.length && STATS) buscarBanco(true);
   if (v === 'desempenho') renderDesempenho();
   if (v === 'reforco') renderReforco();
+  if (v === 'atualizacoes') renderAtualizacoes();
   if (!opts.semHistorico) registrarRota(v, !!opts.substituir);
   window.scrollTo({top:0, behavior:opts.semHistorico ? 'auto' : 'smooth'});
 }
@@ -1275,6 +1319,57 @@ window.abrirReforco = async (tema, area) => {
   $('#rArea').value = area || (tema && REFORCO.temas[tema] ? REFORCO.temas[tema].area : ''); $('#rBusca').value = ''; renderTemas();
   if (tema) setTimeout(() => { const el = document.getElementById('tema-' + encodeURIComponent(tema)); if (el){ el.scrollIntoView({behavior:'smooth', block:'center'}); el.style.boxShadow = '0 0 0 3px var(--red)'; } }, 150);
 };
+
+/* ============================================================ RADAR DE ATUALIZAÇÕES */
+const UPD_AREAS = ['Todas','INEP / Revalida / ENAMED','SUS / Preventiva','Clínica Médica','Cardiologia','Endocrinologia / Diabetes','Pediatria','Ginecologia e Obstetrícia','Cirurgia','Infectologia','Dermatologia','Neurologia','Psiquiatria','Pneumologia','Nefrologia','Gastroenterologia','Emergência','Imunizações','Medicina de Família'];
+let UPD_CACHE = ls.get('cti_atualizacoes_cache_v1', {}), UPD_DATA = null, UPD_BUSY = false;
+function updKey(){ return `${$('#uArea')?.value || 'Todas'}|${$('#uDias')?.value || '120'}`; }
+function fmtUpdData(s){ if (!s) return 'data não informada'; try { return new Date(s + 'T12:00:00').toLocaleDateString('pt-BR'); } catch { return s; } }
+function updCacheSave(k, v){ UPD_CACHE[k] = v; const ks = Object.keys(UPD_CACHE); while (ks.length > 18) delete UPD_CACHE[ks.shift()]; try { ls.set('cti_atualizacoes_cache_v1', UPD_CACHE); } catch {} }
+function renderUpdCards(){
+  if (!UPD_DATA) return;
+  const filtro = $('#uFonte').value;
+  const itens = (UPD_DATA.items || []).filter(x => !filtro || x.fonte_nivel === filtro);
+  $('#uStatus').textContent = `${itens.length} atualização(ões) · ${UPD_DATA.modo || 'busca'} · ${UPD_DATA.cache ? 'cache' : 'consulta atual'} · ${new Date(UPD_DATA.gerado_em || Date.now()).toLocaleString('pt-BR')}`;
+  $('#uLista').innerHTML = itens.length ? `<div class="upd-grid">${itens.map(x => {
+    const cls = x.fonte_nivel === 'oficial' ? 'src-oficial' : 'src-verificada';
+    const level = x.fonte_rotulo || (x.fonte_nivel === 'oficial' ? 'Fonte oficial' : 'Fonte verificada · secundária');
+    return `<article class="upd-card">
+      <div class="upd-meta"><span class="pill pri">${esc(x.area || 'Medicina')}</span><span class="pill">${esc(x.tipo || 'Atualização')}</span><span class="pill ${cls}">${esc(level)}</span></div>
+      <h3>${esc(x.titulo)}</h3>
+      <p>${esc(x.resumo)}</p>
+      <div class="upd-meta"><span class="tiny muted">${ic('cal')} ${esc(fmtUpdData(x.data))}</span>${x.relevancia ? `<span class="tiny muted">· ${esc(x.relevancia)}</span>` : ''}${x.grounded === false ? '<span class="pill warn">Confirmar na fonte</span>' : ''}</div>
+      <div class="upd-source"><div><b>${esc(x.fonte_nome || 'Fonte')}</b><span>${x.fonte_nivel === 'oficial' ? 'Publicação institucional/oficial' : 'Fonte secundária previamente verificada pelo CTi'}</span></div><a class="upd-link" href="${esc(x.fonte_url)}" target="_blank" rel="noopener noreferrer">Abrir fonte ${ic('arrow')}</a></div>
+    </article>`; }).join('')}</div>` : `<div class="card empty">Nenhuma atualização encontrada com este filtro. Isso não significa que não existam mudanças; tente outro período ou toque em “Atualizar agora”.</div>`;
+  const canais = UPD_DATA.fontes_fixadas || [];
+  if (canais.length){ $('#uCanais').hidden = false; $('#uCanaisLista').innerHTML = canais.map(x => `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${x.nivel === 'oficial' ? '✓' : '◐'} ${esc(x.nome)}</a>`).join(''); }
+}
+async function carregarAtualizacoes(force=false){
+  if (UPD_BUSY) return;
+  const k = updKey(), salvo = UPD_CACHE[k];
+  if (!force && salvo){ UPD_DATA = salvo; renderUpdCards(); return; }
+  UPD_BUSY = true; const b = $('#uAtualizar'); b.disabled = true;
+  $('#uStatus').textContent = 'Buscando publicações recentes e verificando as fontes… isso pode levar alguns segundos.';
+  try {
+    const area = encodeURIComponent($('#uArea').value || 'Todas'), dias = $('#uDias').value || '120';
+    const r = await api(`/api/atualizacoes?area=${area}&dias=${dias}&force=${force ? 'true' : 'false'}`);
+    UPD_DATA = r; updCacheSave(k, r); renderUpdCards();
+    if (r.erro && !(r.items || []).length) toast('Busca em tempo real indisponível; veja os canais oficiais.');
+  } catch (e) {
+    if (salvo){ UPD_DATA = salvo; renderUpdCards(); $('#uStatus').textContent = 'Sem conexão com a busca agora · exibindo a última consulta salva neste aparelho.'; }
+    else { $('#uLista').innerHTML = `<div class="card empty">${ic('alert')} Não foi possível consultar agora: ${esc(e.message)}. Tente novamente mais tarde.</div>`; $('#uStatus').textContent = 'Busca indisponível temporariamente.'; }
+  } finally { UPD_BUSY = false; b.disabled = false; }
+}
+function renderAtualizacoes(){
+  if (!$('#uArea').options.length) {
+    $('#uArea').innerHTML = UPD_AREAS.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+    $('#uArea').onchange = () => { UPD_DATA = null; carregarAtualizacoes(false); };
+    $('#uDias').onchange = () => { UPD_DATA = null; carregarAtualizacoes(false); };
+    $('#uFonte').onchange = renderUpdCards;
+    $('#uAtualizar').onclick = () => carregarAtualizacoes(true);
+  }
+  carregarAtualizacoes(false);
+}
 
 /* ============================================================ PERFIL, FAVORITOS e atalhos */
 function aplicarPerfil(){

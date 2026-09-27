@@ -43,3 +43,26 @@ A chave nunca deve ser colocada no HTML/JavaScript do navegador.
 
 ## Observação importante
 O banco possui algumas questões com alternativas F/G/H. Esta versão envia A–H para a IA e valida todas as alternativas existentes antes de aceitar a resposta.
+
+
+## Radar de Atualizações (custo zero)
+
+A aba **Atualizações** reutiliza a mesma `CTI_GEMINI_API_KEY`. Não é necessária outra chave.
+
+- Busca principal: `gemini-2.5-flash-lite` / `gemini-2.5-flash` com Google Search Grounding, somente porque esses modelos têm franquia gratuita explícita para grounding.
+- O CTi NÃO usa Gemini 3.x com Search nesta função, evitando risco de cobrança do grounding.
+- Limite local padrão: 20 atualizações manuais/dia (`CTI_UPDATES_DAILY_CAP`), muito abaixo da franquia gratuita.
+- Se o Grounding 2.5 não estiver disponível para o projeto, o sistema cai automaticamente para Google News RSS, sem chave e sem custo.
+- Fontes são classificadas como **Fonte oficial** ou **Fonte verificada · secundária**. Estratégia MED e Mundo Revalida entram apenas como fontes secundárias.
+- O app salva a última consulta no `localStorage` do aparelho e não faz busca contínua em segundo plano.
+
+Variáveis opcionais:
+
+```text
+CTI_UPDATES_GEMINI_MODELS=gemini-2.5-flash-lite,gemini-2.5-flash
+CTI_UPDATES_CACHE_SECONDS=21600
+CTI_UPDATES_DAILY_CAP=20
+CTI_UPDATES_MAX_ITEMS=14
+```
+
+Para uso pessoal, não é necessário configurar nenhuma delas.
