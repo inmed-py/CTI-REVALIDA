@@ -1,7 +1,7 @@
 /* CTi – Service Worker privado
    Segurança > offline: NÃO armazena HTML autenticado, questões, gabaritos ou respostas de IA.
    Apenas ativos públicos (ícones, fontes, imagens) ficam em cache. */
-const VERSAO = 'cti-v13-login-hardening';
+const VERSAO = 'cti-v14-security-hardening';
 const SHELL = `${VERSAO}-public`;
 const ARQUIVOS = [
   '/static/offline.html', '/static/manifest.json', '/static/fonts/inter-latin.woff2',
@@ -28,17 +28,17 @@ self.addEventListener('message', e => {
 self.addEventListener('fetch', e => {
   const req = e.request, url = new URL(req.url);
   if (url.origin !== location.origin) return;
-  // Navegação e API: sempre rede. Sem rede, não expõe cópia privada previamente salva.
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req, {cache:'no-store'}).catch(() => caches.match('/static/offline.html')));
     return;
   }
   if (url.pathname.startsWith('/api/') || url.pathname === '/sw.js') return;
-  if (req.method === 'GET' && url.pathname.startsWith('/static/')) {
+  // Só recursos explicitamente públicos entram no cache. Código autenticado (app.js/app.css) nunca fica no SW.
+  if (req.method === 'GET' && ARQUIVOS.includes(url.pathname)) {
     e.respondWith(caches.open(SHELL).then(async c => {
       const hit = await c.match(req);
       if (hit) return hit;
-      try { const r = await fetch(req); if (r.ok && url.pathname !== '/static/index.html' && url.pathname !== '/static/login.html') c.put(req, r.clone()); return r; }
+      try { const r = await fetch(req); if (r.ok) c.put(req, r.clone()); return r; }
       catch { return hit || Response.error(); }
     }));
   }

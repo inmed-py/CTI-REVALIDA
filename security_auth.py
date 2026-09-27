@@ -1,8 +1,8 @@
-"""Autenticação stateless e preparação para RBAC do CTI.
+"""Autenticação stateless, CSRF e tokens de escopo do CTI.
 
 Versão atual: um administrador definido por variáveis de ambiente.
-Arquitetura: o restante do app enxerga uma identidade com username/role; no futuro,
-um banco de usuários pode substituir apenas o UserStore sem reescrever as rotas.
+A aplicação consome uma identidade username/role; no futuro o EnvUserStore pode ser
+substituído por um banco de usuários sem reescrever as rotas protegidas.
 """
 from __future__ import annotations
 
@@ -24,14 +24,6 @@ class UserIdentity:
 
 
 class EnvUserStore:
-    """Store mínimo para o uso pessoal atual.
-
-    CTI_ACCESS_USERNAME: nome do usuário (obrigatório em produção quando auth está ativa)
-    CTI_ACCESS_PASSWORD: senha secreta (obrigatória em produção quando auth está ativa)
-
-    A interface é deliberadamente pequena para ser substituída depois por PostgreSQL/Supabase.
-    """
-
     def __init__(self) -> None:
         self.username = os.environ.get("CTI_ACCESS_USERNAME", "").strip()
         self.password = os.environ.get("CTI_ACCESS_PASSWORD", "")
@@ -41,7 +33,6 @@ class EnvUserStore:
         return bool(self.username and self.password)
 
     def authenticate(self, username: str, password: str) -> Optional[UserIdentity]:
-        # compare_digest evita comparação com timing trivial.
         ok_user = hmac.compare_digest((username or "").strip(), self.username)
         ok_pass = hmac.compare_digest(password or "", self.password)
         if self.configured and ok_user and ok_pass:
@@ -53,14 +44,13 @@ class SessionManager:
     def __init__(self, prod: bool) -> None:
         self.prod = prod
         self.store = EnvUserStore()
-        self.ttl = max(900, min(int(os.environ.get("CTI_SESSION_TTL", "604800")), 2592000))  # 15 min..30 d
+        self.ttl = max(900, min(int(os.environ.get("CTI_SESSION_TTL", "604800")), 2592000))
         self.version = os.environ.get("CTI_SESSION_VERSION", "1")
         explicit = os.environ.get("CTI_SESSION_SECRET", "")
-        # Para reduzir atrito, se não houver segredo explícito derivamos um segredo estável da senha.
-        # Em produção é recomendável definir CTI_SESSION_SECRET separadamente.
-        material = explicit or ("cti-session-v1:" + self.store.password)
+        material = explicit or ("cti-session-v2:" + self.store.password)
         self._secret = hashlib.sha256(material.encode("utf-8")).digest()
         self.cookie_name = "__Host-cti_session" if prod else "cti_session"
+        self.csrf_cookie_name = "cti_csrf"
 
     @property
     def configured(self) -> bool:
@@ -72,21 +62,12 @@ class SessionManager:
     def _b64d(self, s: str) -> bytes:
         return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
-    def issue(self, user: UserIdentity) -> str:
-        now = int(time.time())
-        payload = {
-            "u": user.username,
-            "r": user.role,
-            "iat": now,
-            "exp": now + self.ttl,
-            "v": self.version,
-            "j": secrets.token_urlsafe(10),
-        }
+    def _sign_payload(self, payload: dict) -> str:
         body = self._b64e(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
         sig = self._b64e(hmac.new(self._secret, body.encode("ascii"), hashlib.sha256).digest())
         return body + "." + sig
 
-    def decode(self, token: str | None) -> Optional[UserIdentity]:
+    def _read_payload(self, token: str | None) -> Optional[dict]:
         if not token:
             return None
         try:
@@ -95,34 +76,81 @@ class SessionManager:
             if not hmac.compare_digest(sig, expected):
                 return None
             data = json.loads(self._b64d(body).decode("utf-8"))
-            if data.get("v") != self.version or int(data.get("exp", 0)) < int(time.time()):
+            if int(data.get("exp", 0)) < int(time.time()):
                 return None
-            username = str(data.get("u") or "")
-            role = str(data.get("r") or "user")
-            # Na versão atual só existe o admin do ambiente. Isso invalida sessões se o usuário mudar.
-            if not hmac.compare_digest(username, self.store.username):
-                return None
-            return UserIdentity(username=username, role=role)
+            return data
         except Exception:
             return None
 
+    def issue(self, user: UserIdentity) -> str:
+        now = int(time.time())
+        return self._sign_payload({
+            "t": "session",
+            "u": user.username,
+            "r": user.role,
+            "iat": now,
+            "exp": now + self.ttl,
+            "v": self.version,
+            "j": secrets.token_urlsafe(10),
+            "c": secrets.token_urlsafe(24),
+        })
+
+    def decode(self, token: str | None) -> Optional[UserIdentity]:
+        data = self._read_payload(token)
+        if not data or data.get("t") != "session" or data.get("v") != self.version:
+            return None
+        username = str(data.get("u") or "")
+        role = str(data.get("r") or "user")
+        if not hmac.compare_digest(username, self.store.username):
+            return None
+        return UserIdentity(username=username, role=role)
+
+    def csrf_for_session(self, token: str | None) -> Optional[str]:
+        data = self._read_payload(token)
+        if not data or data.get("t") != "session" or data.get("v") != self.version:
+            return None
+        return str(data.get("c") or "") or None
+
+
+    def fingerprint(self, value: str) -> str:
+        return hmac.new(self._secret, (value or "?").encode("utf-8"), hashlib.sha256).hexdigest()[:12]
+
+    def issue_scope(self, user: UserIdentity, purpose: str, subject: str | int, ttl: int = 21600) -> str:
+        now = int(time.time())
+        ttl = max(60, min(int(ttl), 2592000))
+        return self._sign_payload({
+            "t": "scope", "u": user.username, "r": user.role,
+            "p": str(purpose), "s": str(subject),
+            "iat": now, "exp": now + ttl, "v": self.version,
+        })
+
+    def verify_scope(self, token: str | None, user: UserIdentity, purpose: str, subject: str | int) -> bool:
+        data = self._read_payload(token)
+        if not data or data.get("t") != "scope" or data.get("v") != self.version:
+            return False
+        checks = [
+            hmac.compare_digest(str(data.get("u") or ""), user.username),
+            hmac.compare_digest(str(data.get("p") or ""), str(purpose)),
+            hmac.compare_digest(str(data.get("s") or ""), str(subject)),
+        ]
+        return all(checks)
+
     def set_cookie(self, response, user: UserIdentity) -> None:
+        token = self.issue(user)
+        csrf = self.csrf_for_session(token)
         response.set_cookie(
-            key=self.cookie_name,
-            value=self.issue(user),
-            max_age=self.ttl,
-            expires=self.ttl,
-            path="/",
-            secure=self.prod,
-            httponly=True,
-            samesite="strict",
+            key=self.cookie_name, value=token, max_age=self.ttl, expires=self.ttl,
+            path="/", secure=self.prod, httponly=True, samesite="strict",
+        )
+        response.set_cookie(
+            key=self.csrf_cookie_name, value=csrf or "", max_age=self.ttl, expires=self.ttl,
+            path="/", secure=self.prod, httponly=False, samesite="strict",
         )
 
     def clear_cookie(self, response) -> None:
         response.delete_cookie(
-            key=self.cookie_name,
-            path="/",
-            secure=self.prod,
-            httponly=True,
-            samesite="strict",
+            key=self.cookie_name, path="/", secure=self.prod, httponly=True, samesite="strict",
+        )
+        response.delete_cookie(
+            key=self.csrf_cookie_name, path="/", secure=self.prod, httponly=False, samesite="strict",
         )

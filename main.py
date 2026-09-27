@@ -2,6 +2,7 @@ import json
 import os
 import random
 import re
+import logging
 from datetime import date
 from typing import Dict, List, Optional
 
@@ -23,39 +24,58 @@ from security_auth import SessionManager, UserIdentity
 BASE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(BASE, "static")
 
-# ----------------------------------------------------------------------------- configuração de produção
-# Produção é detectada sozinha na Vercel/Render/Koyeb, ou com CTI_ENV=production.
+# ----------------------------------------------------------------------------- produção / segurança
 PROD = os.environ.get("CTI_ENV", "").lower() == "production" or any(os.environ.get(v) for v in ("VERCEL", "RENDER", "KOYEB_APP_NAME"))
-ORIGENS = [o.strip() for o in os.environ.get("CTI_ALLOWED_ORIGINS", "").split(",") if o.strip()]   # vazio = só o próprio domínio
+ORIGENS = [o.strip() for o in os.environ.get("CTI_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 FRAME_ANCESTORS = os.environ.get("CTI_FRAME_ANCESTORS", "'none'" if PROD else "")
-RATE_LIMIT = int(os.environ.get("CTI_RATE_LIMIT", "240"))            # teto geral /api por minuto por identidade/IP (0 = desliga)
-AI_RATE_LIMIT = int(os.environ.get("CTI_AI_RATE_LIMIT", "20"))          # /api/ia-* por minuto por usuário
-HEAVY_RATE_LIMIT = int(os.environ.get("CTI_HEAVY_RATE_LIMIT", "8"))     # refresh/scraping/PDF por minuto por usuário
-LOGIN_ATTEMPTS = int(os.environ.get("CTI_LOGIN_ATTEMPTS", "8"))         # tentativas de login por 15 min/IP
+RATE_LIMIT = int(os.environ.get("CTI_RATE_LIMIT", "240"))
+AI_RATE_LIMIT = int(os.environ.get("CTI_AI_RATE_LIMIT", "20"))
+HEAVY_RATE_LIMIT = int(os.environ.get("CTI_HEAVY_RATE_LIMIT", "8"))
+LOGIN_ATTEMPTS = int(os.environ.get("CTI_LOGIN_ATTEMPTS", "8"))
+ANSWER_BATCH_LIMIT = int(os.environ.get("CTI_ANSWER_BATCH_LIMIT", "6"))
+QUESTION_VIEW_LIMIT = int(os.environ.get("CTI_QUESTION_VIEW_LIMIT", "220"))
 AUTH_REQUIRED = os.environ.get("CTI_REQUIRE_AUTH", "1" if PROD else "0").strip().lower() not in ("0", "false", "no", "off")
-EXAMES_OCULTOS = {e.strip() for e in os.environ.get("CTI_OCULTAR_EXAMES", "").split(",") if e.strip()}  # ex.: "USMLE Step 2 CK"
+EXAMES_OCULTOS = {e.strip() for e in os.environ.get("CTI_OCULTAR_EXAMES", "").split(",") if e.strip()}
 SESSIONS = SessionManager(PROD)
 
 app = FastAPI(title="CTi – Centro de Treinamento Intensivo",
               docs_url=None if PROD else "/docs", redoc_url=None, openapi_url=None if PROD else "/openapi.json")
 from fastapi.middleware.gzip import GZipMiddleware
-app.add_middleware(GZipMiddleware, minimum_size=1000)   # respostas compactadas: índice ~286 KB -> ~30 KB
-if ORIGENS:   # o app é servido pelo mesmo domínio da API, então CORS só é necessário se houver outro front-end
-    app.add_middleware(CORSMiddleware, allow_origins=ORIGENS, allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+if ORIGENS:
+    app.add_middleware(CORSMiddleware, allow_origins=ORIGENS, allow_methods=["GET", "POST"],
+                       allow_headers=["Content-Type", "X-CSRF-Token", "X-Question-Token", "X-Answer-Token"])
 
-CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
-       "font-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; "
-       "base-uri 'self'; form-action 'self'" + (f"; frame-ancestors {FRAME_ANCESTORS}" if FRAME_ANCESTORS else ""))
+# JS saiu do HTML nesta versão; script inline/event handler não é mais permitido.
+CSP = ("default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; "
+       "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; "
+       "object-src 'none'; base-uri 'self'; form-action 'self'" +
+       (f"; frame-ancestors {FRAME_ANCESTORS}" if FRAME_ANCESTORS else ""))
 _hits: Dict[str, deque] = defaultdict(deque)
+_security_log = logging.getLogger("cti.security")
+if not _security_log.handlers:
+    logging.basicConfig(level=logging.INFO)
 
 
 def _ip(request: Request) -> str:
-    # Na Vercel, X-Forwarded-For é montado pelo proxy. Em desenvolvimento cai para request.client.
     return (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
 
 
+def _fingerprint(value: str) -> str:
+    return SESSIONS.fingerprint(value)
+
+
+def _audit(event: str, request: Request, user: Optional[UserIdentity] = None, detail: str = "") -> None:
+    payload = {"event": event, "ip": _fingerprint(_ip(request)), "path": request.url.path}
+    if user:
+        payload["user"] = _fingerprint(user.username)
+        payload["role"] = user.role
+    if detail:
+        payload["detail"] = detail[:160]
+    _security_log.info("SECURITY %s", json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+
+
 def _limite(bucket: str, limite: int, janela: int, peso: int = 1) -> bool:
-    """True quando excedeu. Limiter local é uma segunda barreira; edge/WAF continua recomendado."""
     if limite <= 0:
         return False
     agora = time.monotonic()
@@ -66,7 +86,6 @@ def _limite(bucket: str, limite: int, janela: int, peso: int = 1) -> bool:
         return True
     fila.extend([agora] * peso)
     if len(_hits) > 25000:
-        # Evita crescimento indefinido em processos longos. Não é a barreira principal contra DDoS.
         for k in list(_hits)[:5000]:
             if not _hits[k] or agora - _hits[k][-1] > 1800:
                 _hits.pop(k, None)
@@ -82,49 +101,86 @@ def _admin(request: Request) -> UserIdentity:
     if not u:
         raise HTTPException(401, "Sessão expirada")
     if u.role != "admin":
-        raise HTTPException(403, "Ação restrita ao administrador")
+        _audit("admin_denied", request, u)
+        raise HTTPException(403, "Ação não permitida")
     return u
+
+
+def _csrf_ok(request: Request) -> bool:
+    session_token = request.cookies.get(SESSIONS.cookie_name)
+    expected = SESSIONS.csrf_for_session(session_token)
+    cookie = request.cookies.get(SESSIONS.csrf_cookie_name)
+    header = request.headers.get("x-csrf-token")
+    return bool(expected and cookie and header and hmac_compare(expected, cookie) and hmac_compare(expected, header))
+
+
+def hmac_compare(a: str, b: str) -> bool:
+    import hmac
+    return hmac.compare_digest(str(a), str(b))
+
+
+@app.exception_handler(Exception)
+async def erro_interno(request: Request, exc: Exception):
+    # Em produção, nunca devolve stack trace/caminhos internos ao navegador.
+    _security_log.exception("APP_ERROR path=%s type=%s", request.url.path, type(exc).__name__)
+    if PROD:
+        return JSONResponse({"detail": "Não foi possível concluir esta operação."}, status_code=500,
+                            headers={"Cache-Control": "no-store"})
+    raise exc
 
 
 @app.middleware("http")
 async def seguranca(request: Request, call_next):
     path = request.url.path
-    user = SESSIONS.decode(request.cookies.get(SESSIONS.cookie_name)) if (AUTH_REQUIRED and SESSIONS.configured) else None
+    session_token = request.cookies.get(SESSIONS.cookie_name)
+    user = SESSIONS.decode(session_token) if (AUTH_REQUIRED and SESSIONS.configured) else None
     request.state.user = user
 
-    # Brute force: login tem seu próprio limite, inclusive antes da autenticação.
     if path == "/api/auth/login" and request.method == "POST":
         if _limite(f"login:{_ip(request)}", LOGIN_ATTEMPTS, 900):
-            return JSONResponse({"detail": "Muitas tentativas de acesso. Aguarde 15 minutos."}, status_code=429,
+            _audit("login_rate_limited", request)
+            return JSONResponse({"detail": "Muitas tentativas. Aguarde alguns minutos."}, status_code=429,
                                 headers={"Retry-After": "900", "Cache-Control": "no-store"})
 
-    # Falha fechada: em produção, auth ativada sem senha nunca deixa a API/banco público por acidente.
     auth_publica = path in ("/api/auth/login", "/api/auth/status", "/robots.txt")
     if AUTH_REQUIRED and path.startswith("/api/") and not auth_publica:
         if not SESSIONS.configured:
-            return JSONResponse({"detail": "Acesso privado ainda não configurado."}, status_code=503,
+            return JSONResponse({"detail": "Acesso temporariamente indisponível."}, status_code=503,
                                 headers={"Cache-Control": "no-store"})
         if not user:
+            _audit("unauthenticated_api", request)
             return JSONResponse({"detail": "Autenticação necessária."}, status_code=401,
                                 headers={"Cache-Control": "no-store"})
 
-    # Impede bypass óbvio do / pela URL direta do arquivo da SPA.
-    if AUTH_REQUIRED and path == "/static/index.html" and not user:
+    private_static = {"/static/index.html", "/static/app.js", "/static/app.css"}
+    if AUTH_REQUIRED and path in private_static and not user:
         return PlainTextResponse("Not found", status_code=404)
 
-    # Limites por identidade autenticada (ou IP quando público).
+    # Double-submit + token ligado à sessão. Login é a única mutação sem sessão prévia.
+    if AUTH_REQUIRED and user and request.method in ("POST", "PUT", "PATCH", "DELETE") and path != "/api/auth/login":
+        if not _csrf_ok(request):
+            _audit("csrf_block", request, user)
+            return JSONResponse({"detail": "Solicitação inválida."}, status_code=403,
+                                headers={"Cache-Control": "no-store"})
+
     if path.startswith("/api/") and path not in ("/api/auth/login", "/api/auth/status"):
         ident = f"u:{user.username}" if user else f"ip:{_ip(request)}"
         if RATE_LIMIT and _limite(f"api:{ident}", RATE_LIMIT, 60):
+            _audit("api_rate_limited", request, user)
             return JSONResponse({"detail": "Muitas requisições. Aguarde um minuto."}, status_code=429,
                                 headers={"Retry-After": "60", "Cache-Control": "no-store"})
         if path.startswith("/api/ia-") and AI_RATE_LIMIT and _limite(f"ia:{ident}", AI_RATE_LIMIT, 60):
-            return JSONResponse({"detail": "Limite temporário da IA atingido. Aguarde um minuto."}, status_code=429,
+            _audit("ai_rate_limited", request, user)
+            return JSONResponse({"detail": "Limite temporário atingido. Aguarde um minuto."}, status_code=429,
                                 headers={"Retry-After": "60", "Cache-Control": "no-store"})
-        pesado = (request.query_params.get("force", "").lower() == "true" or
-                  path.startswith("/api/segunda-fase/pep"))
+        if path == "/api/responder-lote" and ANSWER_BATCH_LIMIT and _limite(f"batch:{ident}", ANSWER_BATCH_LIMIT, 60):
+            _audit("batch_rate_limited", request, user)
+            return JSONResponse({"detail": "Muitas correções em sequência. Aguarde um minuto."}, status_code=429,
+                                headers={"Retry-After": "60", "Cache-Control": "no-store"})
+        pesado = (request.query_params.get("force", "").lower() == "true" or path.startswith("/api/segunda-fase/pep"))
         if pesado and HEAVY_RATE_LIMIT and _limite(f"heavy:{ident}", HEAVY_RATE_LIMIT, 60):
-            return JSONResponse({"detail": "Muitas operações de atualização. Aguarde um minuto."}, status_code=429,
+            _audit("heavy_rate_limited", request, user)
+            return JSONResponse({"detail": "Muitas operações em sequência. Aguarde um minuto."}, status_code=429,
                                 headers={"Retry-After": "60", "Cache-Control": "no-store"})
 
     resp = await call_next(request)
@@ -193,15 +249,17 @@ def auth_status(request: Request):
 
 
 @app.post("/api/auth/login")
-def auth_login(data: LoginRequest):
+def auth_login(data: LoginRequest, request: Request):
     if not AUTH_REQUIRED:
         return {"ok": True, "auth_disabled": True}
     if not SESSIONS.configured:
-        raise HTTPException(503, "Defina CTI_ACCESS_USERNAME e CTI_ACCESS_PASSWORD na hospedagem antes de liberar o CTI.")
+        _audit("login_unavailable", request)
+        raise HTTPException(503, "Acesso temporariamente indisponível.")
     user = SESSIONS.store.authenticate(data.username, data.password)
     if not user:
-        # Mesmo texto para usuário/senha evita enumerar credenciais.
+        _audit("login_failed", request)
         raise HTTPException(401, "Usuário ou senha inválidos.")
+    _audit("login_success", request, user)
     resp = JSONResponse({"ok": True, "user": {"username": user.username, "role": user.role}})
     SESSIONS.set_cookie(resp, user)
     resp.headers["Cache-Control"] = "no-store"
@@ -210,9 +268,10 @@ def auth_login(data: LoginRequest):
 
 @app.post("/api/auth/logout")
 def auth_logout(request: Request):
+    _audit("logout", request, _user(request))
     resp = JSONResponse({"ok": True})
     SESSIONS.clear_cookie(resp)
-    resp.headers["Clear-Site-Data"] = '"cache"'  # localStorage é preservado para não apagar o progresso do aluno
+    resp.headers["Clear-Site-Data"] = '"cache"'
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -241,6 +300,69 @@ def publico(q: dict, com_gabarito: bool = False) -> dict:
         out.pop("gabarito_oficial", None)
         out.pop("resposta_correta_texto", None)
     return out
+
+
+def resumo_questao(q: dict) -> dict:
+    return {
+        "id": q["id"], "exame": q.get("exame"), "edicao": q.get("edicao"), "numero": q.get("numero"),
+        "especialidade": q.get("especialidade"), "tema": q.get("tema"), "valida": q.get("valida"),
+        "duplicata_de": q.get("duplicata_de"), "tem_imagem": q.get("tem_imagem"),
+        "preview": (q.get("enunciado") or "")[:160],
+    }
+
+
+def _qtoken(request: Request, question_id: int) -> str:
+    u = _user(request)
+    if not AUTH_REQUIRED or not u:
+        return ""
+    return SESSIONS.issue_scope(u, "question", question_id, ttl=43200)
+
+
+def publico_full(q: dict, request: Request) -> dict:
+    out = publico(q)
+    tok = _qtoken(request, q["id"])
+    if tok:
+        out["_access"] = tok
+    return out
+
+
+def _verificar_qtoken(request: Request, question_id: int, token: str | None) -> None:
+    if not AUTH_REQUIRED:
+        return
+    u = _user(request)
+    if not u or not SESSIONS.verify_scope(token, u, "question", question_id):
+        _audit("question_token_denied", request, u, str(question_id))
+        raise HTTPException(403, "Acesso à questão expirou. Reabra a questão.")
+
+
+def _verificar_answer_token(request: Request, question_id: int, token: str | None) -> None:
+    if not AUTH_REQUIRED:
+        return
+    u = _user(request)
+    # O administrador pode revisar questões históricas salvas antes da implantação dos receipts.
+    if u and u.role == "admin":
+        return
+    if not u or not SESSIONS.verify_scope(token, u, "answered", question_id):
+        _audit("answer_token_denied", request, u, str(question_id))
+        raise HTTPException(403, "Confirme a resposta antes de solicitar esta análise.")
+
+
+def _answer_token(request: Request, question_id: int) -> str:
+    u = _user(request)
+    if not AUTH_REQUIRED or not u:
+        return ""
+    return SESSIONS.issue_scope(u, "answered", question_id, ttl=2592000)
+
+
+def _question_delivery_guard(request: Request, count: int) -> None:
+    if count <= 0:
+        return
+    u = _user(request)
+    ident = f"u:{u.username}" if u else f"ip:{_ip(request)}"
+    limite = QUESTION_VIEW_LIMIT * (3 if u and u.role == "admin" else 1)
+    if limite and _limite(f"qview:{ident}", limite, 600, peso=count):
+        _audit("question_bulk_block", request, u, f"count={count}")
+        raise HTTPException(429, "Muitas questões solicitadas em sequência. Aguarde alguns minutos.")
 
 
 def filtrar(itens, exame=None, edicao=None, especialidade=None, tema=None, q=None):
@@ -299,31 +421,75 @@ def indice():
 
 @app.get("/api/questoes")
 def get_questions(
+    request: Request,
     edicao: Optional[str] = None, especialidade: Optional[str] = None, tema: Optional[str] = None,
-    exame: Optional[str] = None, q: Optional[str] = None, ids: Optional[str] = None, ano: Optional[str] = None,
-    apenas_validas: bool = False, sem_imagem: bool = False, aleatorio: bool = False, seed: Optional[str] = None,
-    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+    exame: Optional[str] = None, q: Optional[str] = None, ano: Optional[str] = None,
+    apenas_validas: bool = False, sem_imagem: bool = False,
+    limit: int = Query(30, ge=1, le=50), offset: int = Query(0, ge=0),
 ):
-    if ids:
-        ordem = [int(x) for x in ids.split(",")[:MAX_IDS] if x.strip().isdigit()]
-        itens = [BY_ID[i] for i in ordem if i in BY_ID]
-    else:
-        itens = (POOL_SEM_IMG if sem_imagem else POOL) if apenas_validas else ALL_QUESTIONS
-        itens = filtrar(itens, exame, edicao, especialidade, tema, q)
-        if ano:
-            itens = [i for i in itens if ano in i["edicao"]]
-        if aleatorio:
-            itens = list(itens)
-            random.Random(seed).shuffle(itens)
+    """Lista do banco em formato resumido. O texto integral só é entregue ao abrir/treinar a questão."""
+    itens = (POOL_SEM_IMG if sem_imagem else POOL) if apenas_validas else ALL_QUESTIONS
+    itens = filtrar(itens, exame, edicao, especialidade, tema, q)
+    if ano:
+        itens = [i for i in itens if ano in i["edicao"]]
+    page = itens[offset: offset + limit]
+    _question_delivery_guard(request, max(1, len(page) // 5))  # listagem custa menos que questão integral
     return {"total": len(itens), "limit": limit, "offset": offset,
-            "items": [publico(i) for i in itens[offset: offset + limit]]}
+            "items": [resumo_questao(i) for i in page]}
 
 
 @app.get("/api/questoes/{question_id}")
-def get_single_question(question_id: int):
+def get_single_question(question_id: int, request: Request):
     if question_id not in BY_ID:
         raise HTTPException(404, "Questão não encontrada")
-    return publico(BY_ID[question_id])
+    _question_delivery_guard(request, 1)
+    return publico_full(BY_ID[question_id], request)
+
+
+class BatchQuestionsRequest(BaseModel):
+    ids: List[int] = Field(default_factory=list, max_length=100)
+
+
+@app.post("/api/questoes/lote")
+def get_questions_batch(data: BatchQuestionsRequest, request: Request):
+    ordem = []
+    seen = set()
+    for i in data.ids[:100]:
+        if i in BY_ID and i not in seen:
+            seen.add(i); ordem.append(i)
+    _question_delivery_guard(request, len(ordem))
+    if len(ordem) >= 80:
+        _audit("question_batch_large", request, _user(request), f"count={len(ordem)}")
+    return {"items": [publico_full(BY_ID[i], request) for i in ordem]}
+
+
+class SimuladoRequest(BaseModel):
+    n: int = Field(20, ge=1, le=100)
+    exame: Optional[str] = None
+    edicao: Optional[str] = None
+    especialidade: Optional[str] = None
+    tema: Optional[str] = None
+    ordem: str = "prova"               # prova | aleatoria
+    apenas_novas: bool = False
+    vistas: List[int] = Field(default_factory=list, max_length=1200)
+    seed: Optional[str] = None
+
+
+@app.post("/api/simulado")
+def criar_simulado(req: SimuladoRequest, request: Request):
+    itens = filtrar(POOL_SEM_IMG, req.exame, req.edicao, req.especialidade, req.tema)
+    if req.apenas_novas and req.vistas:
+        vistos = set(req.vistas)
+        itens = [q for q in itens if q["id"] not in vistos] + [q for q in itens if q["id"] in vistos]
+    else:
+        itens = list(itens)
+    if req.ordem == "aleatoria":
+        random.Random(req.seed or str(time.time_ns())).shuffle(itens)
+    else:
+        itens.sort(key=lambda x: (str(x.get("edicao", "")), int(x.get("numero") or 0)))
+    escolhidas = itens[:req.n]
+    _question_delivery_guard(request, len(escolhidas))
+    return {"total_disponivel": len(itens), "items": [publico_full(q, request) for q in escolhidas]}
 
 
 class MissaoRequest(BaseModel):
@@ -339,7 +505,7 @@ class MissaoRequest(BaseModel):
 
 
 @app.post("/api/missao")
-def missao(req: MissaoRequest):
+def missao(req: MissaoRequest, request: Request):
     """15 questões inéditas por dia. Nunca repete ids já vistos; quando o banco se esgota, recomeça o ciclo."""
     dia = req.data or date.today().isoformat()
     rng = random.Random(f"{dia}-{req.semente_usuario}")
@@ -378,37 +544,73 @@ def missao(req: MissaoRequest):
         escolhidas += restantes[: max(0, n - len(escolhidas))]
         escolhidas = escolhidas[:n]
         rng.shuffle(escolhidas)
+    _question_delivery_guard(request, len(escolhidas))
     return {"data": dia, "modo": req.modo, "ciclo_reiniciado": ciclo_reiniciado,
             "ineditas_restantes": max(0, len([q for q in base if q["id"] not in vistas]) - n),
-            "total_disponivel": len(base), "items": [publico(q) for q in escolhidas]}
+            "total_disponivel": len(base), "items": [publico_full(q, request) for q in escolhidas]}
 
 
 class AnswerRequest(BaseModel):
     question_id: int
-    selected_option: str
+    selected_option: str = Field(min_length=1, max_length=8)
+    access_token: str = ""
 
 
-@app.post("/api/responder")
-def answer_question(data: AnswerRequest):
-    q = BY_ID.get(data.question_id)
-    if not q:
-        raise HTTPException(404, "Questão não encontrada")
+def _corrigir_uma(q: dict, selected_option: str, request: Request) -> dict:
     official = q["gabarito_oficial"]
+    answer_token = _answer_token(request, q["id"])
     return {
-        "question_id": q["id"], "gabarito_oficial": official, "selected_option": data.selected_option,
-        "is_correct": official == data.selected_option or official == "ANULADA",
+        "question_id": q["id"], "gabarito_oficial": official, "selected_option": selected_option,
+        "is_correct": official == selected_option or official == "ANULADA",
         "anulada": official == "ANULADA",
         "resposta_correta_texto": q["resposta_correta_texto"],
         "especialidade": q["especialidade"], "tema": q["tema"],
-        "explicacao_ia": explicacao_salva(q),   # só se já existir; senão o app busca /api/ia-explicar em seguida
+        "answer_token": answer_token,
+        "explicacao_ia": explicacao_salva(q),
     }
 
 
-@app.get("/api/gabarito")
-def gabarito_lote(ids: str):
-    """Correção em lote (simulado em modo prova)."""
+@app.post("/api/responder")
+def answer_question(data: AnswerRequest, request: Request):
+    q = BY_ID.get(data.question_id)
+    if not q:
+        raise HTTPException(404, "Questão não encontrada")
+    _verificar_qtoken(request, q["id"], data.access_token)
+    return _corrigir_uma(q, data.selected_option.upper(), request)
+
+
+class BatchAnswerItem(BaseModel):
+    question_id: int
+    selected_option: Optional[str] = None
+    access_token: str = ""
+
+
+class BatchAnswerRequest(BaseModel):
+    answers: List[BatchAnswerItem] = Field(default_factory=list, max_length=100)
+
+
+@app.post("/api/responder-lote")
+def answer_batch(data: BatchAnswerRequest, request: Request):
+    if not data.answers:
+        return {"items": {}}
     out = {}
-    for x in ids.split(",")[:MAX_IDS]:
+    for a in data.answers[:100]:
+        q = BY_ID.get(a.question_id)
+        if not q:
+            continue
+        _verificar_qtoken(request, q["id"], a.access_token)
+        corr = _corrigir_uma(q, (a.selected_option or "").upper(), request)
+        out[str(q["id"])] = corr
+    return {"items": out}
+
+
+@app.get("/api/admin/gabarito")
+def gabarito_lote(ids: str, request: Request):
+    """Ferramenta administrativa; o aplicativo normal corrige somente respostas submetidas."""
+    _admin(request)
+    _audit("admin_gabarito_bulk", request, _user(request))
+    out = {}
+    for x in ids.split(",")[:100]:
         if x.strip().isdigit() and int(x) in BY_ID:
             q = BY_ID[int(x)]
             out[q["id"]] = {"gabarito": q["gabarito_oficial"], "area": q["especialidade"], "tema": q["tema"]}
@@ -416,20 +618,23 @@ def gabarito_lote(ids: str):
 
 
 @app.get("/api/ia-explicar/{question_id}")
-def ia_explicar(question_id: int):
+def ia_explicar(question_id: int, request: Request):
     if question_id not in BY_ID:
         raise HTTPException(404, "Questão não encontrada")
+    _verificar_qtoken(request, question_id, request.headers.get("x-question-token"))
+    _verificar_answer_token(request, question_id, request.headers.get("x-answer-token"))
     return gerar_explicacao_ia(BY_ID[question_id])
 
 
 @app.get("/api/ia-dica/{question_id}")
-def ia_dica(question_id: int):
+def ia_dica(question_id: int, request: Request):
     if question_id not in BY_ID:
         raise HTTPException(404, "Questão não encontrada")
+    _verificar_qtoken(request, question_id, request.headers.get("x-question-token"))
     return gerar_dica_ia(BY_ID[question_id])
 
 
-@app.get("/api/ia-status")
+@app.get("/api/admin/ia-status")
 def ia_status(request: Request):
     _admin(request)
     return status_ia()
@@ -450,6 +655,7 @@ def atualizacoes(request: Request, area: str = "Todas", force: bool = False, dia
     """Radar de atualizações. Refresh forçado é reservado ao administrador."""
     if force:
         _admin(request)
+        _audit("admin_force_updates", request, _user(request), f"area={area};dias={dias}")
     return buscar_atualizacoes(area=area, force=force, dias=dias)
 
 
@@ -492,6 +698,7 @@ def segunda_fase_catalogo(request: Request, force: bool = False):
     """Catálogo gratuito dos PEPs oficiais da 2ª etapa do Revalida."""
     if force:
         _admin(request)
+        _audit("admin_force_pep_catalog", request, _user(request))
     return catalogo_segunda_fase(force=force)
 
 
@@ -500,12 +707,14 @@ def segunda_fase_pep(request: Request, edicao: str, force: bool = False):
     """Extrai, sob demanda, estações e itens de checklist de um PEP oficial do INEP."""
     if force:
         _admin(request)
+        _audit("admin_force_pep", request, _user(request), f"edicao={edicao}")
     try:
         return pep_segunda_fase(edicao=edicao, force=force)
     except KeyError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, "Edição não encontrada")
     except Exception as e:
-        raise HTTPException(502, f"Não foi possível ler o PEP oficial agora: {e}")
+        _security_log.exception("PEP_ERROR edicao=%s", edicao)
+        raise HTTPException(502, "Não foi possível ler o PEP oficial agora.")
 
 
 @app.get("/sw.js", include_in_schema=False)

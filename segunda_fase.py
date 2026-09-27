@@ -291,6 +291,6 @@ def pep(edicao: str, force: bool = False) -> dict:
         data = _req(url)
         parsed = _parse_pdf(data, edicao, url)
     except Exception as e:
-        return {"edicao": edicao, "pdf_url": url, "estacoes": [], "total_estacoes": 0, "indisponivel": True, "links": _links(), "aviso": f"O PDF oficial foi localizado, mas a leitura automática falhou agora ({e}). Abra o PEP do INEP pelo link abaixo."}
+        return {"edicao": edicao, "pdf_url": url, "estacoes": [], "total_estacoes": 0, "indisponivel": True, "links": _links(), "aviso": "O PDF oficial foi localizado, mas a leitura automática não está disponível agora. Abra o PEP do INEP pelo link abaixo."}
     _pep_cache[edicao] = {"ts": time.time(), "data": parsed}
     return dict(parsed, cache=False)
