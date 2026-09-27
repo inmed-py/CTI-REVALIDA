@@ -3,7 +3,7 @@
    - arquivos estáticos: cache primeiro, atualizando em segundo plano;
    - API (GET): rede primeiro; sem internet usa a última resposta guardada (questões já abertas, índice, trilhas);
    - correção (POST /api/responder, /api/missao) exige internet de propósito: o gabarito não fica no aparelho. */
-const VERSAO = 'cti-v9-radar-prova';
+const VERSAO = 'cti-v10-estacoes-completas';
 const SHELL = `${VERSAO}-shell`, API = `${VERSAO}-api`;
 const ARQUIVOS = [
   '/', '/static/manifest.json', '/static/fonts/inter-latin.woff2',
@@ -11,7 +11,7 @@ const ARQUIVOS = [
   '/static/img/icon-192.png', '/static/img/apple-touch-icon.png',
   '/static/img/hero_m.jpg', '/static/img/essencia_m.jpg',
 ];
-const API_OFFLINE = /^\/api\/(stats|indice|questoes|reforco|ia-explicar|ia-dica|ia-status|atualizacoes)/;
+const API_OFFLINE = /^\/api\/(stats|indice|questoes|reforco|ia-explicar|ia-dica|ia-status|atualizacoes|segunda-fase|estacoes)/;
 const MAX_API = 400;
 
 self.addEventListener('install', e => {

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from clinical_ai import explicacao_salva, gerar_dica_ia, gerar_explicacao_ia, status_ia
 from conteudo_temas import CONTEUDO, ESTRATEGIA_POR_AREA
 from atualizacoes import AREAS as AREAS_ATUALIZACOES, buscar_atualizacoes
+from segunda_fase import catalogo as catalogo_segunda_fase, pep as pep_segunda_fase
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(BASE, "static")
@@ -317,6 +318,52 @@ def atualizacoes(area: str = "Todas", force: bool = False, dias: int = Query(120
 @app.get("/api/atualizacoes/areas")
 def atualizacoes_areas():
     return {"areas": AREAS_ATUALIZACOES}
+
+
+# ------------------------------------------------ 2ª fase completa (estações históricas oficiais INEP)
+EST_PATH = os.path.join(BASE, "estacoes_2fase.json")
+try:
+    with open(EST_PATH, encoding="utf-8") as f:
+        ESTACOES: List[dict] = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    ESTACOES = []
+EST_BY_ID = {e["id"]: e for e in ESTACOES if e.get("id")}
+
+
+@app.get("/api/estacoes")
+def estacoes():
+    """Lista resumida das estações históricas da 2ª etapa, sem enviar o PEP inteiro."""
+    return [{
+        "id": e["id"], "edicao": e.get("edicao"), "edicao_rotulo": e.get("edicao_rotulo"),
+        "estacao": e.get("estacao"), "area": e.get("area"), "titulo": e.get("titulo"),
+        "itens": len(e.get("checklist", [])), "tambem_em": e.get("tambem_em", []),
+        "pep_preliminar": e.get("pep_preliminar", False),
+    } for e in ESTACOES]
+
+
+@app.get("/api/estacoes/{est_id}")
+def estacao(est_id: str):
+    e = EST_BY_ID.get(est_id)
+    if not e:
+        raise HTTPException(status_code=404, detail="Estação não encontrada")
+    return e
+
+
+@app.get("/api/segunda-fase/catalogo")
+def segunda_fase_catalogo(force: bool = False):
+    """Catálogo gratuito dos PEPs oficiais da 2ª etapa do Revalida."""
+    return catalogo_segunda_fase(force=force)
+
+
+@app.get("/api/segunda-fase/pep")
+def segunda_fase_pep(edicao: str, force: bool = False):
+    """Extrai, sob demanda, estações e itens de checklist de um PEP oficial do INEP."""
+    try:
+        return pep_segunda_fase(edicao=edicao, force=force)
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Não foi possível ler o PEP oficial agora: {e}")
 
 
 @app.get("/sw.js", include_in_schema=False)
