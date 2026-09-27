@@ -74,3 +74,19 @@ CTI_UPDATES_TIMEOUT=14
 ```
 
 Para uso pessoal, não é necessário configurar nenhuma delas.
+
+## Radar de Atualizações v3
+
+A aba **Atualizações** reutiliza `CTI_GEMINI_API_KEY` para uma única busca fundamentada por atualização manual, tentando:
+
+1. `gemini-2.5-flash`
+2. `gemini-2.5-flash-lite` (fallback)
+
+Ela também complementa com Bing Web RSS e Google News RSS, sem chave.
+
+Não é necessário adicionar outra API. O radar foi filtrado especificamente para Revalida/ENAMED: diretrizes, protocolos, PCDT, notas técnicas, mudanças do INEP e fontes médicas selecionadas. Notícias locais/genéricas (saneamento, obras, gestão municipal, eventos etc.) são descartadas.
+
+Variáveis opcionais:
+- `CTI_UPDATES_GEMINI_MODELS=gemini-2.5-flash,gemini-2.5-flash-lite`
+- `CTI_UPDATES_MAX_ITEMS=80`
+- `CTI_UPDATES_DAILY_CAP=20`
