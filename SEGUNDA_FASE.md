@@ -41,3 +41,26 @@ A extração de tabelas em PDF pode variar entre edições. Se o INEP bloquear t
 - INEP — Provas e Gabaritos do Revalida
 - INEP — Perguntas frequentes sobre a 2ª etapa
 - Mundo Revalida — “As 10 estações da 2ª fase do Revalida: o que esperar em cada área”
+
+## Laboratório de documentos escritos
+
+A aba **Documentos escritos** complementa as estações com treino local, sem API paga.
+
+Inclui:
+- SOAP;
+- evolução de prontuário com foco em continuidade assistencial;
+- encaminhamento/referência;
+- receita simples;
+- solicitação de exames;
+- atestado e relatório médico;
+- declaração de óbito (base oficial MS/SIM, layout simplificado para treino);
+- notificação compulsória (base oficial MS/SINAN, layout simplificado para treino);
+- receituário de controle especial (referência oficial Anvisa);
+- referência/contrarreferência;
+- orientação de alta;
+- prescrição hospitalar;
+- resumo de alta.
+
+A correção gera uma **nota de treino CTI**, não uma nota oficial do INEP. Os documentos com fonte oficial apresentam link para conferência da versão vigente. SOAP, evolução, encaminhamento e outros documentos sem formulário nacional único são identificados como **modelo técnico CTI**.
+
+Nas estações históricas, o resultado também sugere documentos complementares relacionados ao caso. Essa sugestão não altera a pontuação oficial do PEP antigo.
