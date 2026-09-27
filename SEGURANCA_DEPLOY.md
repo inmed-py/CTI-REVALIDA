@@ -55,7 +55,7 @@ A documentação da Vercel também permite usar rate-limit keys por usuário aut
 
 A autenticação foi isolada em `security_auth.py`.
 
-Hoje o `EnvUserStore` possui apenas um administrador vindo das variáveis de ambiente. As rotas, entretanto, já recebem uma identidade com `username` e `role` (`admin`/`user`).
+Hoje o `EnvUserStore` possui apenas um administrador vindo das variáveis de ambiente. Não existe nome de usuário padrão no código: `CTI_ACCESS_USERNAME` e `CTI_ACCESS_PASSWORD` precisam estar definidos na hospedagem. As rotas, entretanto, já recebem uma identidade com `username` e `role` (`admin`/`user`).
 
 Na fase multiusuário, a troca recomendada é implementar um store persistente com tabela mínima:
 

@@ -26,19 +26,19 @@ class UserIdentity:
 class EnvUserStore:
     """Store mínimo para o uso pessoal atual.
 
-    CTI_ACCESS_USERNAME: nome do usuário (padrão: admin)
+    CTI_ACCESS_USERNAME: nome do usuário (obrigatório em produção quando auth está ativa)
     CTI_ACCESS_PASSWORD: senha secreta (obrigatória em produção quando auth está ativa)
 
     A interface é deliberadamente pequena para ser substituída depois por PostgreSQL/Supabase.
     """
 
     def __init__(self) -> None:
-        self.username = os.environ.get("CTI_ACCESS_USERNAME", "admin").strip() or "admin"
+        self.username = os.environ.get("CTI_ACCESS_USERNAME", "").strip()
         self.password = os.environ.get("CTI_ACCESS_PASSWORD", "")
 
     @property
     def configured(self) -> bool:
-        return bool(self.password)
+        return bool(self.username and self.password)
 
     def authenticate(self, username: str, password: str) -> Optional[UserIdentity]:
         # compare_digest evita comparação com timing trivial.

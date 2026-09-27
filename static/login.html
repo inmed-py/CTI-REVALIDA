@@ -19,7 +19,7 @@
 <div class="tag">Acesso privado</div><h1>Entre para continuar</h1>
 <p class="muted">O banco de questões, gabaritos, IA e materiais da plataforma ficam protegidos por sessão.</p>
 <form id="form" autocomplete="on">
-<label class="f">Usuário<input id="user" name="username" autocomplete="username" value="admin" required></label>
+<label class="f">Usuário<input id="user" name="username" autocomplete="username" placeholder="Digite seu usuário" autocapitalize="none" spellcheck="false" autofocus required></label>
 <label class="f">Senha<input id="pass" name="password" type="password" autocomplete="current-password" required></label>
 <button class="btn" id="btn" type="submit">Entrar</button>
 <div class="err" id="err"></div><div class="cfg" id="cfg"></div>
@@ -28,6 +28,6 @@
 </div>
 <script>
 const f=document.getElementById('form'),b=document.getElementById('btn'),e=document.getElementById('err'),c=document.getElementById('cfg');
-async function status(){try{const r=await fetch('/api/auth/status',{cache:'no-store'}),j=await r.json();if(j.authenticated)location.replace('/');if(j.configured===false){c.style.display='block';c.textContent='A segurança ainda não foi configurada na hospedagem. Defina CTI_ACCESS_PASSWORD nas variáveis de ambiente da Vercel.';b.disabled=true}}catch{}}
+async function status(){try{const r=await fetch('/api/auth/status',{cache:'no-store'}),j=await r.json();if(j.authenticated)location.replace('/');if(j.configured===false){c.style.display='block';c.textContent='A segurança ainda não foi configurada na hospedagem. Defina CTI_ACCESS_USERNAME e CTI_ACCESS_PASSWORD nas variáveis de ambiente da Vercel.';b.disabled=true}}catch{}}
 f.addEventListener('submit',async ev=>{ev.preventDefault();e.style.display='none';b.disabled=true;b.textContent='Entrando…';try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('user').value,password:document.getElementById('pass').value})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||'Não foi possível entrar.');location.replace('/')}catch(x){e.textContent=x.message;e.style.display='block';b.disabled=false;b.textContent='Entrar'}});status();
 </script></body></html>

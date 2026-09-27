@@ -197,7 +197,7 @@ def auth_login(data: LoginRequest):
     if not AUTH_REQUIRED:
         return {"ok": True, "auth_disabled": True}
     if not SESSIONS.configured:
-        raise HTTPException(503, "Defina CTI_ACCESS_PASSWORD na hospedagem antes de liberar o CTI.")
+        raise HTTPException(503, "Defina CTI_ACCESS_USERNAME e CTI_ACCESS_PASSWORD na hospedagem antes de liberar o CTI.")
     user = SESSIONS.store.authenticate(data.username, data.password)
     if not user:
         # Mesmo texto para usuário/senha evita enumerar credenciais.
