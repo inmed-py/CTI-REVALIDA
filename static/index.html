@@ -367,6 +367,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/></symbol>
   <symbol id="i-gem" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/><path d="M14 8l4 4-4 4M18 12H9"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="5" r="1.4"/><circle cx="12" cy="5" r="1.4"/><circle cx="19" cy="5" r="1.4"/><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/><circle cx="5" cy="19" r="1.4"/><circle cx="12" cy="19" r="1.4"/><circle cx="19" cy="19" r="1.4"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -416,6 +417,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
       <button class="icon-btn" id="btnBusca" title="Buscar no banco de questões"><svg class="i"><use href="#i-search"/></svg></button>
       <button class="icon-btn" id="btnSino" title="Revisões pendentes"><svg class="i"><use href="#i-bell"/></svg><span class="badge" id="badgeSino" hidden>0</span></button>
       <button class="icon-btn" id="btnTema" title="Tema claro/escuro"><svg class="i"><use href="#i-moon"/></svg></button>
+      <button class="icon-btn" id="btnLogout" title="Sair da sessão"><svg class="i"><use href="#i-logout"/></svg></button>
       <button class="perfil" id="btnPerfil" title="Editar perfil"><span class="avatar" id="pfAvatar">Dr</span><span class="pinfo"><b id="pfNome">Doutor(a)</b><small id="pfObj">Definir objetivo</small></span></button>
     </div>
   </div>
@@ -774,6 +776,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   <button class="it" data-go="favoritos"><svg class="i"><use href="#i-star"/></svg>Favoritos</button>
   <button class="it" id="shPerfil"><svg class="i"><use href="#i-user"/></svg>Meu perfil</button>
   <button class="it" id="shTema"><svg class="i"><use href="#i-moon"/></svg>Tema claro/escuro</button>
+  <button class="it" id="shLogout"><svg class="i"><use href="#i-logout"/></svg>Sair da sessão</button>
 </div></div>
 <div class="toast" id="toast"></div>
 
@@ -797,6 +800,7 @@ function iaGuardar(id, x){
 function toast(m){ const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2400); }
 async function api(url, opt){
   let r; try { r = await fetch(url, opt); } catch { throw new Error('sem conexão com a internet. Esta ação precisa estar on-line.'); }
+  if (r.status === 401){ location.replace('/?reason=session'); throw new Error('Sessão expirada. Entre novamente.'); }
   if (!r.ok){ let m = await r.text(); try { m = JSON.parse(m).detail || m; } catch {} throw new Error(typeof m === 'string' ? m : 'falha na requisição'); }
   return r.json(); }
 const post = (url, body) => api(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
@@ -871,6 +875,13 @@ async function init(){
   if (ls.get('medquest_theme') === 'dark') document.documentElement.dataset.theme = 'dark';
   const alternaTema = () => { const d = document.documentElement.dataset.theme === 'dark'; document.documentElement.dataset.theme = d ? '' : 'dark'; ls.set('medquest_theme', d ? 'light' : 'dark'); $('#sheet').classList.remove('on'); if ($('#view-painel').classList.contains('on')) renderPainel(); };
   $('#btnTema').onclick = alternaTema; $('#shTema').onclick = alternaTema;
+  const sairSessao = async () => {
+    if (!confirm('Sair da sessão do CTi? Seu progresso local será preservado.')) return;
+    try { await fetch('/api/auth/logout', {method:'POST'}); } catch {}
+    try { navigator.serviceWorker?.controller?.postMessage({type:'CLEAR_PRIVATE'}); } catch {}
+    location.replace('/');
+  };
+  $('#btnLogout').onclick = sairSessao; $('#shLogout').onclick = () => { $('#sheet').classList.remove('on'); sairSessao(); };
   $$('#tabs button, #side button[data-v], #bnav button[data-v]').forEach(b => b.onclick = () => b.dataset.v === 'mais' ? $('#sheet').classList.add('on') : mostrar(b.dataset.v));
   $$('[data-go]').forEach(b => b.onclick = () => mostrar(b.dataset.go));
   $('#sheet').onclick = e => { if (e.target.id === 'sheet') $('#sheet').classList.remove('on'); };

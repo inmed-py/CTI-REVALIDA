@@ -10,7 +10,7 @@ from collections import defaultdict, deque
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,7 @@ from clinical_ai import explicacao_salva, gerar_dica_ia, gerar_explicacao_ia, st
 from conteudo_temas import CONTEUDO, ESTRATEGIA_POR_AREA
 from atualizacoes import AREAS as AREAS_ATUALIZACOES, buscar_atualizacoes
 from segunda_fase import catalogo as catalogo_segunda_fase, pep as pep_segunda_fase
+from security_auth import SessionManager, UserIdentity
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(BASE, "static")
@@ -27,8 +28,13 @@ STATIC = os.path.join(BASE, "static")
 PROD = os.environ.get("CTI_ENV", "").lower() == "production" or any(os.environ.get(v) for v in ("VERCEL", "RENDER", "KOYEB_APP_NAME"))
 ORIGENS = [o.strip() for o in os.environ.get("CTI_ALLOWED_ORIGINS", "").split(",") if o.strip()]   # vazio = só o próprio domínio
 FRAME_ANCESTORS = os.environ.get("CTI_FRAME_ANCESTORS", "'none'" if PROD else "")
-RATE_LIMIT = int(os.environ.get("CTI_RATE_LIMIT", "240"))            # requisições /api por minuto por IP (0 = desliga)
+RATE_LIMIT = int(os.environ.get("CTI_RATE_LIMIT", "240"))            # teto geral /api por minuto por identidade/IP (0 = desliga)
+AI_RATE_LIMIT = int(os.environ.get("CTI_AI_RATE_LIMIT", "20"))          # /api/ia-* por minuto por usuário
+HEAVY_RATE_LIMIT = int(os.environ.get("CTI_HEAVY_RATE_LIMIT", "8"))     # refresh/scraping/PDF por minuto por usuário
+LOGIN_ATTEMPTS = int(os.environ.get("CTI_LOGIN_ATTEMPTS", "8"))         # tentativas de login por 15 min/IP
+AUTH_REQUIRED = os.environ.get("CTI_REQUIRE_AUTH", "1" if PROD else "0").strip().lower() not in ("0", "false", "no", "off")
 EXAMES_OCULTOS = {e.strip() for e in os.environ.get("CTI_OCULTAR_EXAMES", "").split(",") if e.strip()}  # ex.: "USMLE Step 2 CK"
+SESSIONS = SessionManager(PROD)
 
 app = FastAPI(title="CTi – Centro de Treinamento Intensivo",
               docs_url=None if PROD else "/docs", redoc_url=None, openapi_url=None if PROD else "/openapi.json")
@@ -43,32 +49,102 @@ CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 
 _hits: Dict[str, deque] = defaultdict(deque)
 
 
+def _ip(request: Request) -> str:
+    # Na Vercel, X-Forwarded-For é montado pelo proxy. Em desenvolvimento cai para request.client.
+    return (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
+
+
+def _limite(bucket: str, limite: int, janela: int, peso: int = 1) -> bool:
+    """True quando excedeu. Limiter local é uma segunda barreira; edge/WAF continua recomendado."""
+    if limite <= 0:
+        return False
+    agora = time.monotonic()
+    fila = _hits[bucket]
+    while fila and agora - fila[0] > janela:
+        fila.popleft()
+    if len(fila) + peso > limite:
+        return True
+    fila.extend([agora] * peso)
+    if len(_hits) > 25000:
+        # Evita crescimento indefinido em processos longos. Não é a barreira principal contra DDoS.
+        for k in list(_hits)[:5000]:
+            if not _hits[k] or agora - _hits[k][-1] > 1800:
+                _hits.pop(k, None)
+    return False
+
+
+def _user(request: Request) -> Optional[UserIdentity]:
+    return getattr(request.state, "user", None)
+
+
+def _admin(request: Request) -> UserIdentity:
+    u = _user(request)
+    if not u:
+        raise HTTPException(401, "Sessão expirada")
+    if u.role != "admin":
+        raise HTTPException(403, "Ação restrita ao administrador")
+    return u
+
+
 @app.middleware("http")
 async def seguranca(request: Request, call_next):
     path = request.url.path
-    if RATE_LIMIT and path.startswith("/api/"):
-        ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
-        agora, fila = time.monotonic(), _hits[ip]
-        while fila and agora - fila[0] > 60:
-            fila.popleft()
-        peso = 5 if path.startswith(("/api/gabarito", "/api/ia-")) else 1   # rotas sensíveis/caras contam mais
-        if len(fila) + peso > RATE_LIMIT:
-            return JSONResponse({"detail": "Muitas requisições. Aguarde um minuto."}, status_code=429, headers={"Retry-After": "60"})
-        fila.extend([agora] * peso)
-        if len(_hits) > 20000:   # evita crescer sem limite
-            _hits.clear()
+    user = SESSIONS.decode(request.cookies.get(SESSIONS.cookie_name)) if (AUTH_REQUIRED and SESSIONS.configured) else None
+    request.state.user = user
+
+    # Brute force: login tem seu próprio limite, inclusive antes da autenticação.
+    if path == "/api/auth/login" and request.method == "POST":
+        if _limite(f"login:{_ip(request)}", LOGIN_ATTEMPTS, 900):
+            return JSONResponse({"detail": "Muitas tentativas de acesso. Aguarde 15 minutos."}, status_code=429,
+                                headers={"Retry-After": "900", "Cache-Control": "no-store"})
+
+    # Falha fechada: em produção, auth ativada sem senha nunca deixa a API/banco público por acidente.
+    auth_publica = path in ("/api/auth/login", "/api/auth/status", "/robots.txt")
+    if AUTH_REQUIRED and path.startswith("/api/") and not auth_publica:
+        if not SESSIONS.configured:
+            return JSONResponse({"detail": "Acesso privado ainda não configurado."}, status_code=503,
+                                headers={"Cache-Control": "no-store"})
+        if not user:
+            return JSONResponse({"detail": "Autenticação necessária."}, status_code=401,
+                                headers={"Cache-Control": "no-store"})
+
+    # Impede bypass óbvio do / pela URL direta do arquivo da SPA.
+    if AUTH_REQUIRED and path == "/static/index.html" and not user:
+        return PlainTextResponse("Not found", status_code=404)
+
+    # Limites por identidade autenticada (ou IP quando público).
+    if path.startswith("/api/") and path not in ("/api/auth/login", "/api/auth/status"):
+        ident = f"u:{user.username}" if user else f"ip:{_ip(request)}"
+        if RATE_LIMIT and _limite(f"api:{ident}", RATE_LIMIT, 60):
+            return JSONResponse({"detail": "Muitas requisições. Aguarde um minuto."}, status_code=429,
+                                headers={"Retry-After": "60", "Cache-Control": "no-store"})
+        if path.startswith("/api/ia-") and AI_RATE_LIMIT and _limite(f"ia:{ident}", AI_RATE_LIMIT, 60):
+            return JSONResponse({"detail": "Limite temporário da IA atingido. Aguarde um minuto."}, status_code=429,
+                                headers={"Retry-After": "60", "Cache-Control": "no-store"})
+        pesado = (request.query_params.get("force", "").lower() == "true" or
+                  path.startswith("/api/segunda-fase/pep"))
+        if pesado and HEAVY_RATE_LIMIT and _limite(f"heavy:{ident}", HEAVY_RATE_LIMIT, 60):
+            return JSONResponse({"detail": "Muitas operações de atualização. Aguarde um minuto."}, status_code=429,
+                                headers={"Retry-After": "60", "Cache-Control": "no-store"})
+
     resp = await call_next(request)
     h = resp.headers
     h["X-Content-Type-Options"] = "nosniff"
     h["Referrer-Policy"] = "strict-origin-when-cross-origin"
     h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
     h["Content-Security-Policy"] = CSP
+    h["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    h["Cross-Origin-Opener-Policy"] = "same-origin"
+    h["Cross-Origin-Resource-Policy"] = "same-origin"
+    h["X-Permitted-Cross-Domain-Policies"] = "none"
     if PROD:
         h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         if FRAME_ANCESTORS == "'none'":
             h["X-Frame-Options"] = "DENY"
-    if path.startswith("/api/"):
-        h.setdefault("Cache-Control", "no-store")
+    if path.startswith("/api/") or path in ("/", "/static/index.html", "/static/login.html"):
+        h["Cache-Control"] = "no-store, private"
+        h["Pragma"] = "no-cache"
+        h["Vary"] = "Cookie"
     return resp
 
 DATA_PATH = os.path.join(BASE, "banco_completo_questoes_revalida_e_enamed.json")
@@ -98,6 +174,65 @@ POOL_SEM_IMG = [q for q in POOL if not q["tem_imagem"]]
 MAX_IDS = 200
 
 PUBLIC_FIELDS_HIDE = {"especialidade_original"}
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=256)
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request):
+    u = _user(request)
+    return {
+        "required": AUTH_REQUIRED,
+        "configured": (SESSIONS.configured if AUTH_REQUIRED else True),
+        "authenticated": bool(u) or not AUTH_REQUIRED,
+        "user": ({"username": u.username, "role": u.role} if u else None),
+    }
+
+
+@app.post("/api/auth/login")
+def auth_login(data: LoginRequest):
+    if not AUTH_REQUIRED:
+        return {"ok": True, "auth_disabled": True}
+    if not SESSIONS.configured:
+        raise HTTPException(503, "Defina CTI_ACCESS_PASSWORD na hospedagem antes de liberar o CTI.")
+    user = SESSIONS.store.authenticate(data.username, data.password)
+    if not user:
+        # Mesmo texto para usuário/senha evita enumerar credenciais.
+        raise HTTPException(401, "Usuário ou senha inválidos.")
+    resp = JSONResponse({"ok": True, "user": {"username": user.username, "role": user.role}})
+    SESSIONS.set_cookie(resp, user)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request):
+    resp = JSONResponse({"ok": True})
+    SESSIONS.clear_cookie(resp)
+    resp.headers["Clear-Site-Data"] = '"cache"'  # localStorage é preservado para não apagar o progresso do aluno
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.get("/api/admin/security-status")
+def admin_security_status(request: Request):
+    _admin(request)
+    return {
+        "auth_required": AUTH_REQUIRED,
+        "auth_configured": SESSIONS.configured,
+        "session_cookie": SESSIONS.cookie_name,
+        "session_ttl_seconds": SESSIONS.ttl,
+        "rate_limit_api_min": RATE_LIMIT,
+        "rate_limit_ia_min": AI_RATE_LIMIT,
+        "rate_limit_heavy_min": HEAVY_RATE_LIMIT,
+        "login_attempts_15min": LOGIN_ATTEMPTS,
+        "rbac_ready": True,
+        "current_store": "environment-single-admin",
+        "future_user_store": "database-adapter",
+    }
 
 
 def publico(q: dict, com_gabarito: bool = False) -> dict:
@@ -295,7 +430,8 @@ def ia_dica(question_id: int):
 
 
 @app.get("/api/ia-status")
-def ia_status():
+def ia_status(request: Request):
+    _admin(request)
     return status_ia()
 
 
@@ -310,8 +446,10 @@ def reforco(tema: Optional[str] = None):
 
 
 @app.get("/api/atualizacoes")
-def atualizacoes(area: str = "Todas", force: bool = False, dias: int = Query(120, ge=7, le=365)):
-    """Radar de atualizações médicas gratuito: múltiplos feeds de busca pública + filtro de fontes confiáveis."""
+def atualizacoes(request: Request, area: str = "Todas", force: bool = False, dias: int = Query(120, ge=7, le=365)):
+    """Radar de atualizações. Refresh forçado é reservado ao administrador."""
+    if force:
+        _admin(request)
     return buscar_atualizacoes(area=area, force=force, dias=dias)
 
 
@@ -350,14 +488,18 @@ def estacao(est_id: str):
 
 
 @app.get("/api/segunda-fase/catalogo")
-def segunda_fase_catalogo(force: bool = False):
+def segunda_fase_catalogo(request: Request, force: bool = False):
     """Catálogo gratuito dos PEPs oficiais da 2ª etapa do Revalida."""
+    if force:
+        _admin(request)
     return catalogo_segunda_fase(force=force)
 
 
 @app.get("/api/segunda-fase/pep")
-def segunda_fase_pep(edicao: str, force: bool = False):
+def segunda_fase_pep(request: Request, edicao: str, force: bool = False):
     """Extrai, sob demanda, estações e itens de checklist de um PEP oficial do INEP."""
+    if force:
+        _admin(request)
     try:
         return pep_segunda_fase(edicao=edicao, force=force)
     except KeyError as e:
@@ -376,9 +518,17 @@ def service_worker():
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
+@app.get("/robots.txt", include_in_schema=False)
+def robots():
+    return PlainTextResponse("User-agent: *\nDisallow: /\n", headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.get("/")
-def read_root():
-    return FileResponse(os.path.join(STATIC, "index.html"), headers={"Cache-Control": "no-cache"})
+def read_root(request: Request):
+    if AUTH_REQUIRED:
+        if not SESSIONS.configured or not _user(request):
+            return FileResponse(os.path.join(STATIC, "login.html"), headers={"Cache-Control": "no-store, private", "Vary": "Cookie"})
+    return FileResponse(os.path.join(STATIC, "index.html"), headers={"Cache-Control": "no-store, private", "Vary": "Cookie"})
 
 
 if __name__ == "__main__":
