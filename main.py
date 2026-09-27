@@ -310,7 +310,7 @@ def reforco(tema: Optional[str] = None):
 
 @app.get("/api/atualizacoes")
 def atualizacoes(area: str = "Todas", force: bool = False, dias: int = Query(120, ge=7, le=365)):
-    """Radar de atualizações médicas: Google Search Grounding gratuito quando disponível, com fallback RSS gratuito."""
+    """Radar de atualizações médicas gratuito: múltiplos feeds de busca pública + filtro de fontes confiáveis."""
     return buscar_atualizacoes(area=area, force=force, dias=dias)
 
 

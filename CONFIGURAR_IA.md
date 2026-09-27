@@ -45,24 +45,32 @@ A chave nunca deve ser colocada no HTML/JavaScript do navegador.
 O banco possui algumas questões com alternativas F/G/H. Esta versão envia A–H para a IA e valida todas as alternativas existentes antes de aceitar a resposta.
 
 
-## Radar de Atualizações (custo zero)
+## Radar de Atualizações (custo zero real)
 
-A aba **Atualizações** reutiliza a mesma `CTI_GEMINI_API_KEY`. Não é necessária outra chave.
+A aba **Atualizações** é independente da IA Tutora e, por padrão, **não consome Gemini/NVIDIA nem qualquer API paga**.
 
-- Busca principal: `gemini-2.5-flash-lite` / `gemini-2.5-flash` com Google Search Grounding, somente porque esses modelos têm franquia gratuita explícita para grounding.
-- O CTi NÃO usa Gemini 3.x com Search nesta função, evitando risco de cobrança do grounding.
-- Limite local padrão: 20 atualizações manuais/dia (`CTI_UPDATES_DAILY_CAP`), muito abaixo da franquia gratuita.
-- Se o Grounding 2.5 não estiver disponível para o projeto, o sistema cai automaticamente para Google News RSS, sem chave e sem custo.
-- Fontes são classificadas como **Fonte oficial** ou **Fonte verificada · secundária**. Estratégia MED e Mundo Revalida entram apenas como fontes secundárias.
-- O app salva a última consulta no `localStorage` do aparelho e não faz busca contínua em segundo plano.
+Busca em paralelo:
+
+1. Bing Web RSS — encontra páginas e documentos oficiais que nem sempre viram notícia;
+2. Bing News RSS — notícias e publicações recentes;
+3. Google News RSS — segunda fonte de indexação para aumentar cobertura.
+
+O backend aceita somente domínios classificados como:
+
+- **Fonte oficial/primária**: INEP, Ministério da Saúde, CONITEC, sociedades médicas e publicadores primários de diretrizes;
+- **Fonte secundária verificada**: Estratégia MED, Mundo Revalida, Sanar, Medway e PEBMED/Afya.
+
+Quando o resultado é apenas um trecho indexado ou não tem data confirmada, aparece **Verificação parcial**. O link sempre direciona para a publicação encontrada para conferência.
+
+O radar não salva resultados vazios em cache e usa cache local versão 2, evitando que um “0 atualizações” antigo continue aparecendo após o deploy.
 
 Variáveis opcionais:
 
 ```text
-CTI_UPDATES_GEMINI_MODELS=gemini-2.5-flash-lite,gemini-2.5-flash
-CTI_UPDATES_CACHE_SECONDS=21600
-CTI_UPDATES_DAILY_CAP=20
-CTI_UPDATES_MAX_ITEMS=14
+CTI_UPDATES_CACHE_SECONDS=10800
+CTI_UPDATES_DAILY_CAP=40
+CTI_UPDATES_MAX_ITEMS=24
+CTI_UPDATES_TIMEOUT=14
 ```
 
 Para uso pessoal, não é necessário configurar nenhuma delas.

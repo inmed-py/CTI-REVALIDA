@@ -133,7 +133,7 @@ select:focus,input:focus{outline:2px solid var(--redl);border-color:var(--red)}
 .upd-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.upd-source{display:flex;gap:8px;align-items:flex-start;border-top:1px solid var(--bd);padding-top:10px;margin-top:auto;min-width:0}
 .upd-source>div{min-width:0;flex:1}.upd-source b,.upd-source span{display:block;overflow-wrap:anywhere}.upd-source span{font-size:.74rem;color:var(--mut)}
 .upd-link{flex:none;color:var(--red);font-weight:700;text-decoration:none;font-size:.8rem;display:inline-flex;align-items:center;gap:4px}.upd-link:hover{text-decoration:underline}
-.src-oficial{background:var(--okb);color:var(--ok);border-color:transparent}.src-verificada{background:var(--warnb);color:var(--warn);border-color:transparent}
+.src-oficial{background:var(--okb);color:var(--ok);border-color:transparent}.src-verificada{background:var(--warnb);color:var(--warn);border-color:transparent}.src-partial{background:#eef2ff;color:#4338ca;border-color:transparent}
 .upd-note{border-left:4px solid var(--red);padding:10px 12px;background:var(--card2);border-radius:0 var(--r1) var(--r1) 0;font-size:.82rem;color:var(--mut)}
 .upd-channels{display:flex;gap:8px;flex-wrap:wrap}.upd-channels a{font-size:.78rem;text-decoration:none;border:1px solid var(--bd);border-radius:999px;padding:5px 9px;background:var(--card);color:var(--tx)}.upd-channels a:hover{border-color:var(--red);color:var(--red)}
 /* ---------- tabelas/listas ---------- */
@@ -607,14 +607,14 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   <div class="card">
     <div class="row upd-controls">
       <label class="f">Área / matéria<select id="uArea"></select></label>
-      <label class="f">Período<select id="uDias"><option value="60">Últimos 60 dias</option><option value="120" selected>Últimos 120 dias</option><option value="365">Último ano</option></select></label>
+      <label class="f">Período<select id="uDias"><option value="30">Últimos 30 dias</option><option value="60">Últimos 60 dias</option><option value="90">Últimos 90 dias</option><option value="120" selected>Últimos 120 dias</option><option value="180">Últimos 180 dias</option><option value="365">Último ano</option></select></label>
       <label class="f">Tipo de fonte<select id="uFonte"><option value="">Todas as fontes verificadas</option><option value="oficial">Somente fontes oficiais</option><option value="verificada">Fontes secundárias verificadas</option></select></label>
     </div>
     <div class="row" style="margin-top:12px">
       <button class="btn" id="uAtualizar"><svg class="i"><use href="#i-radar"/></svg>Atualizar agora</button>
       <span class="small muted" id="uStatus">A busca só é feita quando você abre esta área ou toca em atualizar.</span>
     </div>
-    <div class="upd-note" style="margin-top:12px"><b>Custo zero:</b> esta função usa apenas a faixa gratuita configurada e possui fallback de busca RSS sem API. Fontes secundárias são marcadas claramente; para conduta clínica, confirme sempre a publicação original.</div>
+    <div class="upd-note" style="margin-top:12px"><b>Custo zero real:</b> esta aba usa busca web/RSS pública, sem API paga e sem consumir sua cota da IA Tutora. <b>Fonte oficial/primária</b> identifica a origem; <b>Secundária verificada</b> identifica portais médicos selecionados; <b>Verificação parcial</b> significa que o resumo veio do trecho indexado e deve ser conferido na publicação original.</div>
   </div>
   <div id="uLista"><div class="card empty">Abra esta área para buscar as atualizações.</div></div>
   <div class="card" id="uCanais" hidden>
@@ -1322,10 +1322,10 @@ window.abrirReforco = async (tema, area) => {
 
 /* ============================================================ RADAR DE ATUALIZAÇÕES */
 const UPD_AREAS = ['Todas','INEP / Revalida / ENAMED','SUS / Preventiva','Clínica Médica','Cardiologia','Endocrinologia / Diabetes','Pediatria','Ginecologia e Obstetrícia','Cirurgia','Infectologia','Dermatologia','Neurologia','Psiquiatria','Pneumologia','Nefrologia','Gastroenterologia','Emergência','Imunizações','Medicina de Família'];
-let UPD_CACHE = ls.get('cti_atualizacoes_cache_v1', {}), UPD_DATA = null, UPD_BUSY = false;
+let UPD_CACHE = ls.get('cti_atualizacoes_cache_v2', {}), UPD_DATA = null, UPD_BUSY = false;
 function updKey(){ return `${$('#uArea')?.value || 'Todas'}|${$('#uDias')?.value || '120'}`; }
 function fmtUpdData(s){ if (!s) return 'data não informada'; try { return new Date(s + 'T12:00:00').toLocaleDateString('pt-BR'); } catch { return s; } }
-function updCacheSave(k, v){ UPD_CACHE[k] = v; const ks = Object.keys(UPD_CACHE); while (ks.length > 18) delete UPD_CACHE[ks.shift()]; try { ls.set('cti_atualizacoes_cache_v1', UPD_CACHE); } catch {} }
+function updCacheSave(k, v){ UPD_CACHE[k] = v; const ks = Object.keys(UPD_CACHE); while (ks.length > 18) delete UPD_CACHE[ks.shift()]; try { ls.set('cti_atualizacoes_cache_v2', UPD_CACHE); } catch {} }
 function renderUpdCards(){
   if (!UPD_DATA) return;
   const filtro = $('#uFonte').value;
@@ -1333,9 +1333,10 @@ function renderUpdCards(){
   $('#uStatus').textContent = `${itens.length} atualização(ões) · ${UPD_DATA.modo || 'busca'} · ${UPD_DATA.cache ? 'cache' : 'consulta atual'} · ${new Date(UPD_DATA.gerado_em || Date.now()).toLocaleString('pt-BR')}`;
   $('#uLista').innerHTML = itens.length ? `<div class="upd-grid">${itens.map(x => {
     const cls = x.fonte_nivel === 'oficial' ? 'src-oficial' : 'src-verificada';
-    const level = x.fonte_rotulo || (x.fonte_nivel === 'oficial' ? 'Fonte oficial' : 'Fonte verificada · secundária');
+    const level = x.fonte_rotulo || (x.fonte_nivel === 'oficial' ? 'Fonte oficial/primária' : 'Fonte secundária verificada');
+    const ver = x.verificacao || (x.verificacao_parcial ? 'Verificação parcial' : '');
     return `<article class="upd-card">
-      <div class="upd-meta"><span class="pill pri">${esc(x.area || 'Medicina')}</span><span class="pill">${esc(x.tipo || 'Atualização')}</span><span class="pill ${cls}">${esc(level)}</span></div>
+      <div class="upd-meta"><span class="pill pri">${esc(x.area || 'Medicina')}</span><span class="pill">${esc(x.tipo || 'Atualização')}</span><span class="pill ${cls}">${esc(level)}</span>${ver ? `<span class="pill ${ver === 'Verificação parcial' ? 'src-partial' : ''}">${esc(ver)}</span>` : ''}</div>
       <h3>${esc(x.titulo)}</h3>
       <p>${esc(x.resumo)}</p>
       <div class="upd-meta"><span class="tiny muted">${ic('cal')} ${esc(fmtUpdData(x.data))}</span>${x.relevancia ? `<span class="tiny muted">· ${esc(x.relevancia)}</span>` : ''}${x.grounded === false ? '<span class="pill warn">Confirmar na fonte</span>' : ''}</div>
@@ -1353,8 +1354,11 @@ async function carregarAtualizacoes(force=false){
   try {
     const area = encodeURIComponent($('#uArea').value || 'Todas'), dias = $('#uDias').value || '120';
     const r = await api(`/api/atualizacoes?area=${area}&dias=${dias}&force=${force ? 'true' : 'false'}`);
-    UPD_DATA = r; updCacheSave(k, r); renderUpdCards();
-    if (r.erro && !(r.items || []).length) toast('Busca em tempo real indisponível; veja os canais oficiais.');
+    UPD_DATA = r;
+    if ((r.items || []).length) updCacheSave(k, r);
+    else { delete UPD_CACHE[k]; try { ls.set('cti_atualizacoes_cache_v2', UPD_CACHE); } catch {} }
+    renderUpdCards();
+    if (r.erro && !(r.items || []).length) toast('Nenhum resultado nesta tentativa; o CTi não vai guardar esse zero no cache.');
   } catch (e) {
     if (salvo){ UPD_DATA = salvo; renderUpdCards(); $('#uStatus').textContent = 'Sem conexão com a busca agora · exibindo a última consulta salva neste aparelho.'; }
     else { $('#uLista').innerHTML = `<div class="card empty">${ic('alert')} Não foi possível consultar agora: ${esc(e.message)}. Tente novamente mais tarde.</div>`; $('#uStatus').textContent = 'Busca indisponível temporariamente.'; }
