@@ -111,11 +111,16 @@ select:focus,input:focus{outline:2px solid var(--redl);border-color:var(--red)}
 .fav{border:0;background:none;cursor:pointer;color:var(--lt);display:inline-flex;gap:5px;align-items:center;font-size:.8rem;font-weight:600;padding:4px 6px;border-radius:8px}
 .fav:hover{color:var(--red);background:var(--redl)}.fav.on{color:var(--red)}.fav.on .i{fill:var(--red)}
 /* ---------- IA ---------- */
-.ia{border:1.5px solid #F6C4C8;background:linear-gradient(180deg,#FFF5F6,var(--card) 150px);border-radius:var(--r3);padding:16px;margin-top:14px}
+.ia{border:1.5px solid #F6C4C8;background:linear-gradient(180deg,#FFF5F6,var(--card) 150px);border-radius:var(--r3);padding:16px;margin-top:14px;max-width:100%;overflow:hidden}
 [data-theme=dark] .ia{border-color:#5a1a20;background:linear-gradient(180deg,#24121a,var(--card) 150px)}
 .ia h4{margin:14px 0 6px;font-size:.93rem;display:flex;gap:7px;align-items:center}.ia h4 .i{color:var(--red)}.ia h4:first-of-type{margin-top:6px}
 .ia ul{margin:0;padding-left:20px}.ia li{margin:3px 0}
-.ia .alt-an{border-left:4px solid var(--bd);padding:6px 10px;margin:6px 0;background:var(--card);border-radius:0 8px 8px 0;font-size:.9rem}
+.ia .alt-an{border-left:4px solid var(--bd);padding:6px 10px;margin:6px 0;background:var(--card);border-radius:0 8px 8px 0;font-size:.9rem;overflow-wrap:anywhere}
+.ia h4,.ia li,.ia .alt-an,.ia-ref{overflow-wrap:anywhere;word-break:normal}
+.ia ul{max-width:100%}
+.ia-footer{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;margin-top:12px;max-width:100%}
+.ia-ref{flex:1;min-width:0;line-height:1.45;white-space:normal}
+.ia-footer .btn{flex:none}
 .ia .alt-an.c{border-left-color:var(--ok)}.ia .alt-an.w{border-left-color:var(--bad)}
 .bizu{background:var(--warnb);border-radius:var(--r2);padding:10px 12px;font-weight:600}
 .dica{border:1.5px dashed var(--red);border-radius:var(--r2);padding:10px 14px;margin:10px 0;background:var(--redl)}
@@ -239,7 +244,13 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   .modos{grid-template-columns:1fr}.destaque{grid-template-columns:1fr}
 }
 @media(max-width:640px){#btnTema,#btnBusca,.sec-t>span+span{display:none}.brand .wm{font-size:.66rem}.card{padding:14px}.seg button{min-width:140px}.hdr-in{padding:8px 12px;gap:8px}.streak{padding:4px 8px}
-  .metas{grid-template-columns:1fr}.pilares{grid-template-columns:1fr}.pilar{border-right:0}.brand svg.mark{height:30px}}
+  .metas{grid-template-columns:1fr}.pilares{grid-template-columns:1fr}.pilar{border-right:0}.brand svg.mark{height:30px}
+  #qzCard{overflow:hidden}.q-top{align-items:flex-start}.q-top>.row{max-width:100%}
+  .ia{padding:14px 12px}.ia>.row:first-child{align-items:flex-start;gap:8px}.ia>.row:first-child>b{flex:1;min-width:0}
+  .ia ul{padding-left:20px;margin:8px 0}.ia .alt-an{padding:8px 9px;line-height:1.45}
+  .ia-footer{flex-direction:column;align-items:stretch;gap:10px}.ia-ref{width:100%;font-size:.76rem}.ia-footer .btn{width:100%;justify-content:center;white-space:normal;text-align:center}
+  .nav-q{gap:8px}.nav-q>.row{width:100%}.nav-q .btn{min-height:42px}
+}
 </style>
 </head>
 <body>
@@ -575,7 +586,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:9px 8px
   <div class="card">
     <div class="row" style="justify-content:space-between">
       <div><h3 id="qzTitulo" style="margin:0">Sessão</h3><span class="small muted" id="qzSub"></span></div>
-      <div class="row"><span class="pill" id="qzTimer" hidden>00:00</span><button class="btn sec sm" id="qzSair"><svg class="i"><use href="#i-x"/></svg>Sair</button></div>
+      <div class="row"><span class="pill" id="qzTimer" hidden>00:00</span><button class="btn sec sm" id="qzSair" aria-label="Voltar para a tela anterior"><svg class="i"><use href="#i-back"/></svg>Voltar</button></div>
     </div>
     <div class="progress" style="margin-top:10px"><i id="qzBar" style="width:0"></i></div>
     <div class="qgrid" id="qzGrid"></div>
@@ -643,8 +654,49 @@ const salvar = () => { ls.set('medquest_historico', HIST.slice(-20000)); ls.set(
 
 let STATS = null, INDICE = [], IDX = {}, REFORCO = null;
 
+/* ============================================================ navegação interna do PWA */
+const ROTAS = new Set(['painel','missao','banco','simulado','erros','favoritos','desempenho','reforco','quiz']);
+let NAV_READY = false;
+function viewAtual(){
+  const v = $('.view.on');
+  return v ? v.id.replace('view-', '') : 'painel';
+}
+function estadoRota(v){ return {cti:true, view:v}; }
+function registrarRota(v, substituir=false){
+  if (!NAV_READY || !ROTAS.has(v)) return;
+  const hash = '#' + v;
+  if (substituir || (history.state?.cti && history.state.view === v)) history.replaceState(estadoRota(v), '', hash);
+  else history.pushState(estadoRota(v), '', hash);
+}
+function confirmarSaidaProva(){
+  return !(S && S.modo === 'prova' && !S.finalizado && Object.keys(S.selecao || {}).length) ||
+    confirm('Sair do simulado? As respostas não serão corrigidas.');
+}
+function aoVoltarDoSistema(e){
+  const alvo = e.state?.cti && ROTAS.has(e.state.view) ? e.state.view : 'painel';
+  const atual = viewAtual();
+  if (atual === 'quiz' && alvo !== 'quiz' && !confirmarSaidaProva()){
+    history.pushState(estadoRota('quiz'), '', '#quiz');
+    return;
+  }
+  if (alvo === 'quiz'){
+    if (!S){
+      history.replaceState(estadoRota('painel'), '', '#painel');
+      mostrar('painel', {semHistorico:true});
+      return;
+    }
+    mostrar('quiz', {semHistorico:true});
+    renderQuestao();
+    return;
+  }
+  mostrar(alvo, {semHistorico:true});
+}
+
 /* ============================================================ inicialização */
 async function init(){
+  history.replaceState(estadoRota('painel'), '', '#painel');
+  NAV_READY = true;
+  window.addEventListener('popstate', aoVoltarDoSistema);
   if (ls.get('medquest_theme') === 'dark') document.documentElement.dataset.theme = 'dark';
   const alternaTema = () => { const d = document.documentElement.dataset.theme === 'dark'; document.documentElement.dataset.theme = d ? '' : 'dark'; ls.set('medquest_theme', d ? 'light' : 'dark'); $('#sheet').classList.remove('on'); if ($('#view-painel').classList.contains('on')) renderPainel(); };
   $('#btnTema').onclick = alternaTema; $('#shTema').onclick = alternaTema;
@@ -690,7 +742,8 @@ function preencherFiltros(){
   opcoes($('#dEvArea'), STATS.especialidades, 'Todas as áreas');
 }
 
-function mostrar(v){
+function mostrar(v, opts = {}){
+  if (!ROTAS.has(v)) v = 'painel';
   $('#sheet').classList.remove('on');
   $$('.view').forEach(x => x.classList.toggle('on', x.id === 'view-' + v));
   $$('#tabs button, #side button[data-v], #bnav button[data-v]').forEach(b => b.classList.toggle('on', b.dataset.v === v));
@@ -701,7 +754,8 @@ function mostrar(v){
   if (v === 'banco' && !$('#bLista').children.length && STATS) buscarBanco(true);
   if (v === 'desempenho') renderDesempenho();
   if (v === 'reforco') renderReforco();
-  window.scrollTo({top:0, behavior:'smooth'});
+  if (!opts.semHistorico) registrarRota(v, !!opts.substituir);
+  window.scrollTo({top:0, behavior:opts.semHistorico ? 'auto' : 'smooth'});
 }
 
 function atualizarHeader(){
@@ -899,15 +953,23 @@ $('#eStart').onclick = async () => {
 /* ============================================================ SESSÃO / RENDERIZADOR DE QUESTÃO */
 let S = null, timerH = null;
 function iniciarSessao(cfg){
-  S = Object.assign({idx:0, respostas:{}, selecao:{}, riscadas:{}, explic:{}, dicas:{}, inicio:Date.now(), finalizado:false}, cfg);
+  const origem = viewAtual() === 'quiz' ? (S?._origem || 'painel') : viewAtual();
+  S = Object.assign({idx:0, respostas:{}, selecao:{}, riscadas:{}, explic:{}, dicas:{}, inicio:Date.now(), finalizado:false, _origem:origem}, cfg);
   if (S.tipo === 'revisao') S.finalizado = true;
   $('#qzTitulo').textContent = S.titulo; $('#qzSub').textContent = S.sub || '';
   clearInterval(timerH); $('#qzTimer').hidden = S.modo !== 'prova';
   if (S.modo === 'prova') timerH = setInterval(() => { const s = Math.floor((Date.now() - S.inicio) / 1000); $('#qzTimer').textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }, 1000);
-  $$('.view').forEach(x => x.classList.toggle('on', x.id === 'view-quiz'));
+  mostrar('quiz');
   renderQuestao();
 }
-$('#qzSair').onclick = () => { if (S && S.modo === 'prova' && !S.finalizado && Object.keys(S.selecao).length && !confirm('Sair do simulado? As respostas não serão corrigidas.')) return; clearInterval(timerH); const f = S?.onFim; S = null; f ? f() : mostrar('missao'); };
+$('#qzSair').onclick = () => {
+  if (!confirmarSaidaProva()) return;
+  const destino = S?._origem || 'painel';
+  clearInterval(timerH);
+  S = null;
+  if (history.state?.cti && history.state.view === 'quiz' && history.length > 1) history.back();
+  else mostrar(destino, {substituir:true});
+};
 
 function renderGrid(){
   $('#qzGrid').innerHTML = S.questoes.map((q, i) => { const r = S.respostas[q.id]; let c = '';
@@ -1015,7 +1077,7 @@ function iaHtml(x, r){
     ${x.pontos_atencao?.length ? `<h4>${ic('alert')}Pegadinhas da banca</h4><ul>${x.pontos_atencao.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
     ${x.bizu ? `<h4>${ic('target')}Resumo para memorizar</h4><div class="bizu">${esc(x.bizu)}</div>` : ''}
     ${x.foco?.length ? `<h4>${ic('pin')}Foco no que importa · ${esc(x.tema)}</h4><ul>${x.foco.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
-    <div class="row small muted" style="margin-top:10px;justify-content:space-between"><span style="flex:1;min-width:0">${x.referencia ? ic('book') + ' ' + esc(x.referencia) : ''}</span>
+    <div class="ia-footer small muted"><span class="ia-ref">${x.referencia ? ic('book') + ' ' + esc(x.referencia) : ''}</span>
       <button class="btn sec sm" onclick="abrirReforco('${esc(x.tema)}')">${ic('trilha')}Revisar este tema na Trilha</button></div>
   </div>`;
 }

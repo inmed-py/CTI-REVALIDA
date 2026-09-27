@@ -3,7 +3,7 @@
    - arquivos estáticos: cache primeiro, atualizando em segundo plano;
    - API (GET): rede primeiro; sem internet usa a última resposta guardada (questões já abertas, índice, trilhas);
    - correção (POST /api/responder, /api/missao) exige internet de propósito: o gabarito não fica no aparelho. */
-const VERSAO = 'cti-v5';
+const VERSAO = 'cti-v6-nav-mobile';
 const SHELL = `${VERSAO}-shell`, API = `${VERSAO}-api`;
 const ARQUIVOS = [
   '/', '/static/manifest.json', '/static/fonts/inter-latin.woff2',
