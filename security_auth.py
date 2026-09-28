@@ -1,8 +1,9 @@
 """Autenticação stateless, CSRF e tokens de escopo do CTI.
 
-Versão atual: um administrador definido por variáveis de ambiente.
-A aplicação consome uma identidade username/role; no futuro o EnvUserStore pode ser
-substituído por um banco de usuários sem reescrever as rotas protegidas.
+v16: o SessionManager usa um adaptador de usuários. Sem Supabase configurado,
+permanece compatível com CTI_ACCESS_USERNAME/CTI_ACCESS_PASSWORD. Quando as
+variáveis do Supabase são fornecidas, a mesma camada passa a validar usuários
+persistentes sem expor a chave do banco ao navegador.
 """
 from __future__ import annotations
 
@@ -13,48 +14,30 @@ import json
 import os
 import secrets
 import time
-from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
-
-@dataclass(frozen=True)
-class UserIdentity:
-    username: str
-    role: str = "user"
-
-
-class EnvUserStore:
-    def __init__(self) -> None:
-        self.username = os.environ.get("CTI_ACCESS_USERNAME", "").strip()
-        self.password = os.environ.get("CTI_ACCESS_PASSWORD", "")
-
-    @property
-    def configured(self) -> bool:
-        return bool(self.username and self.password)
-
-    def authenticate(self, username: str, password: str) -> Optional[UserIdentity]:
-        ok_user = hmac.compare_digest((username or "").strip(), self.username)
-        ok_pass = hmac.compare_digest(password or "", self.password)
-        if self.configured and ok_user and ok_pass:
-            return UserIdentity(username=self.username, role="admin")
-        return None
+from user_store import UserIdentity, build_user_store
 
 
 class SessionManager:
     def __init__(self, prod: bool) -> None:
         self.prod = prod
-        self.store = EnvUserStore()
+        self.store = build_user_store()
         self.ttl = max(900, min(int(os.environ.get("CTI_SESSION_TTL", "604800")), 2592000))
         self.version = os.environ.get("CTI_SESSION_VERSION", "1")
         explicit = os.environ.get("CTI_SESSION_SECRET", "")
-        material = explicit or ("cti-session-v2:" + self.store.password)
+        fallback_password = os.environ.get("CTI_ACCESS_PASSWORD", "")
+        self._secret_configured = bool(explicit or fallback_password)
+        material = explicit or ("cti-session-v16:" + fallback_password)
         self._secret = hashlib.sha256(material.encode("utf-8")).digest()
         self.cookie_name = "__Host-cti_session" if prod else "cti_session"
         self.csrf_cookie_name = "cti_csrf"
+        self.validation_cache_ttl = max(0, min(int(os.environ.get("CTI_SESSION_DB_CACHE_TTL", "30")), 300))
+        self._validation_cache: Dict[str, Tuple[float, Optional[UserIdentity]]] = {}
 
     @property
     def configured(self) -> bool:
-        return self.store.configured
+        return bool(self.store.configured and self._secret_configured)
 
     def _b64e(self, b: bytes) -> str:
         return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
@@ -88,6 +71,9 @@ class SessionManager:
             "t": "session",
             "u": user.username,
             "r": user.role,
+            "uid": user.user_id,
+            "sv": int(user.session_version),
+            "src": user.source,
             "iat": now,
             "exp": now + self.ttl,
             "v": self.version,
@@ -99,18 +85,38 @@ class SessionManager:
         data = self._read_payload(token)
         if not data or data.get("t") != "session" or data.get("v") != self.version:
             return None
-        username = str(data.get("u") or "")
-        role = str(data.get("r") or "user")
-        if not hmac.compare_digest(username, self.store.username):
+        candidate = UserIdentity(
+            username=str(data.get("u") or ""),
+            role=str(data.get("r") or "user"),
+            user_id=str(data.get("uid") or ""),
+            session_version=int(data.get("sv") or 1),
+            source=str(data.get("src") or "env"),
+        )
+        if not candidate.username:
             return None
-        return UserIdentity(username=username, role=role)
+
+        # Cache curto reduz chamadas ao banco em navegação intensa. Mudanças de papel,
+        # desativação e reset de senha revogam sessões em até este TTL (30 s padrão).
+        if self.validation_cache_ttl > 0 and token:
+            cached = self._validation_cache.get(token)
+            if cached and time.monotonic() - cached[0] <= self.validation_cache_ttl:
+                return cached[1]
+        try:
+            valid = self.store.validate_session(candidate)
+        except Exception:
+            valid = None
+        if self.validation_cache_ttl > 0 and token:
+            self._validation_cache[token] = (time.monotonic(), valid)
+            if len(self._validation_cache) > 5000:
+                cutoff = time.monotonic() - max(self.validation_cache_ttl, 1)
+                self._validation_cache = {k: v for k, v in self._validation_cache.items() if v[0] >= cutoff}
+        return valid
 
     def csrf_for_session(self, token: str | None) -> Optional[str]:
         data = self._read_payload(token)
         if not data or data.get("t") != "session" or data.get("v") != self.version:
             return None
         return str(data.get("c") or "") or None
-
 
     def fingerprint(self, value: str) -> str:
         return hmac.new(self._secret, (value or "?").encode("utf-8"), hashlib.sha256).hexdigest()[:12]

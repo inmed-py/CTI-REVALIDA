@@ -1,8 +1,10 @@
-# CTI — segurança de produção (v14)
+# CTI — segurança e usuários persistentes (v16)
 
-## 1. Variáveis na Vercel
+## 1. Estado atual
 
-Em **Project → Settings → Environment Variables**, configure em Production:
+A v16 preserva todo o endurecimento das versões anteriores e acrescenta a arquitetura de administração de usuários.
+
+Sem Supabase configurado, o CTI continua funcionando exatamente com o administrador atual definido por:
 
 ```text
 CTI_REQUIRE_AUTH=1
@@ -21,79 +23,117 @@ CTI_HEAVY_RATE_LIMIT=8
 CTI_LOGIN_ATTEMPTS=8
 CTI_ANSWER_BATCH_LIMIT=6
 CTI_QUESTION_VIEW_LIMIT=220
+CTI_MAX_BODY_BYTES=1048576
 ```
 
 Nunca coloque valores reais no GitHub. O repositório que contém o banco de questões deve ser **Private**.
 
-## 2. O que foi endurecido nesta versão
+## 2. Proteções já aplicadas
 
-- Login obrigatório em produção; falha fechada se a autenticação não estiver configurada.
+- Login obrigatório em produção.
 - Sessão assinada em cookie `HttpOnly`, `Secure` e `SameSite=Strict`.
-- CSRF para todas as operações mutáveis autenticadas.
-- JavaScript removido do HTML; CSP bloqueia script inline e event handlers inline.
-- Banco paginado retorna apenas metadados + prévia; a questão integral é entregue somente ao abrir/treinar.
-- Questões integrais recebem token temporário ligado ao usuário e à questão.
-- `/api/responder` exige esse token antes de liberar gabarito.
-- Simulado corrige via POST de respostas; o endpoint público antigo de gabarito foi removido.
-- Análise completa da IA exige prova de que a questão foi respondida.
-- Dica da IA exige token válido da questão.
-- Endpoints operacionais foram movidos para `/api/admin/*` e exigem papel `admin`.
-- Limites separados para API, IA, login, correção em lote e operações pesadas.
-- Limite adicional de volume de questões por janela, como segunda barreira contra scraping.
-- Erros internos não devolvem stack trace/caminhos em produção.
-- Eventos básicos de segurança são gravados nos Runtime Logs com IP/usuário somente em fingerprint, nunca senha.
-- Swagger/OpenAPI continuam desativados em produção.
-- Service Worker não armazena banco, gabaritos, HTML autenticado ou respostas da IA.
+- CSRF em operações autenticadas mutáveis.
+- JavaScript principal fora do HTML; CSP bloqueia script inline e event handlers inline.
+- Banco paginado entrega apenas metadados + prévia; questão completa somente sob demanda.
+- Questões integrais usam token temporário ligado ao usuário e à questão.
+- Gabarito liberado somente após submissão da resposta.
+- IA completa liberada somente após resposta confirmada.
+- Endpoints administrativos exigem `role=admin`.
+- Limites separados para API, IA, login, correção em lote, operações pesadas e volume de questões.
+- Limite de corpo de requisição de 1 MiB por padrão.
+- Erros internos não expõem stack trace em produção.
+- Logs de segurança usam fingerprint em vez de IP/usuário bruto.
+- Swagger/OpenAPI desativados em produção.
+- Service Worker não armazena banco, gabaritos, HTML autenticado ou respostas de IA.
 - `robots.txt` + `X-Robots-Tag` bloqueiam indexação.
+- `pypdf` atualizado para 6.19.0.
 
-## 3. Vercel Firewall/WAF — configurar no painel
+## 3. v16 — administração e multiusuário
 
-O limitador Python é defesa em profundidade. Em serverless, diferentes instâncias podem ter memória separada; por isso a barreira contra abuso volumétrico deve ficar também no Edge/WAF.
+A v16 adiciona:
 
-Regras iniciais conservadoras para uso pessoal/pequeno grupo:
+- painel **Administração** visível somente para `admin`;
+- criação e edição de usuários;
+- papéis `admin` e `user`;
+- ativação/desativação;
+- redefinição de senha;
+- exclusão lógica (soft delete);
+- último acesso;
+- datas de criação/atualização;
+- auditoria persistente das ações administrativas;
+- revogação de sessão por `session_version` após mudança de papel, desativação ou reset de senha;
+- proteção contra exclusão/desativação do próprio administrador;
+- proteção contra remoção do último administrador ativo.
 
-1. **Login** — caminho `/api/auth/login`: rate limit por IP, por exemplo 10 requisições em 10 minutos; bloquear/challenge ao exceder.
-2. **IA** — prefixo `/api/ia-`: limitar rajadas anormais, por exemplo 30–60 requisições/minuto por IP. O backend mantém limite ainda menor por usuário.
-3. **API geral** — prefixo `/api/`: limitar rajadas muito acima do uso humano normal, por exemplo 300 requisições/minuto por IP.
-4. **Operações pesadas** — `/api/segunda-fase/pep` e atualizações forçadas: limite bem menor.
+Senhas persistentes são armazenadas somente como hash **Argon2id**.
 
-Comece conservador e ajuste depois do pentest e dos logs. Não crie bloqueios geográficos/ASN sem evidência, para não bloquear usuários legítimos.
+## 4. Supabase do CTI
 
-## 4. GitHub e Vercel
+Quando o projeto Supabase exclusivo do CTI existir, execute:
+
+```text
+supabase/cti_users.sql
+```
+
+Depois configure na Vercel:
+
+```text
+CTI_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+CTI_SUPABASE_SECRET_KEY=sb_secret_...
+```
+
+A chave secreta deve existir **somente no backend**. Nunca colocar em JavaScript, HTML, GitHub ou variável pública.
+
+O arquivo `ADMIN_USUARIOS_SUPABASE.md` contém o procedimento completo.
+
+## 5. Migração sem interrupção
+
+Fluxo recomendado:
+
+```text
+1. Criar projeto Supabase do CTI
+2. Executar supabase/cti_users.sql
+3. Adicionar CTI_SUPABASE_URL + CTI_SUPABASE_SECRET_KEY na Vercel
+4. Deploy
+5. Entrar com o administrador atual
+6. Administração → Migrar administrador atual
+7. Fazer login novamente
+8. Criar os demais usuários
+```
+
+Se as variáveis do Supabase ainda não existirem, o CTI permanece no modo de administrador único.
+
+Se a chave/URL forem configuradas antes da migration, o administrador atual continua disponível apenas durante essa etapa de configuração. Falhas normais de rede/banco depois da ativação são **fail-closed**.
+
+## 6. Sessões
+
+No modo Supabase, cada usuário possui `session_version`. Mudanças sensíveis incrementam esse número e invalidam sessões anteriores.
+
+Para reduzir chamadas ao banco durante navegação intensa, a validação usa cache curto por instância:
+
+```text
+CTI_SESSION_DB_CACHE_TTL=30
+```
+
+Logo, uma desativação/reset pode levar até ~30 s para ser percebida por uma instância que acabou de validar aquela sessão.
+
+## 7. GitHub e Vercel
 
 - Repositório com o banco: **Private**.
 - 2FA no GitHub e na Vercel.
-- Nunca commitar `.env`, chaves Gemini/NVIDIA ou senhas.
-- Habilitar secret scanning e Dependabot no GitHub.
-- Proteger a branch `main` quando houver mais colaboradores; evitar force-push.
-- Preview Deployments devem usar autenticação também. Defina as mesmas variáveis de segurança em Preview se o preview puder ser acessado externamente.
+- Nunca commitar `.env`, chaves Gemini/NVIDIA/Supabase ou senhas.
+- Habilitar secret scanning e Dependabot.
+- Preview Deployments devem manter autenticação.
 
-## 5. Eventos disponíveis nos logs
+## 8. Firewall/WAF
 
-Exemplos de eventos:
+O limitador Python continua sendo defesa em profundidade. Em serverless, diferentes instâncias podem ter memória separada; quando o número de usuários crescer, vale configurar regras no Edge/WAF para login, IA, API geral e operações pesadas.
 
-```text
-login_success
-login_failed
-login_rate_limited
-logout
-unauthenticated_api
-csrf_block
-question_token_denied
-answer_token_denied
-question_bulk_block
-api_rate_limited
-ai_rate_limited
-batch_rate_limited
-heavy_rate_limited
-admin_denied
-```
+Não é necessário transformar isso em bloqueio de lançamento da v16.
 
-O log não registra senha, token de sessão, token CSRF, chave de API nem conteúdo da resposta.
+## 9. Proteção contra clonagem — limite real
 
-## 6. Proteção contra clonagem — limite real
-
-Nenhum sistema web consegue impedir 100% a cópia do conteúdo que um usuário autorizado vê na tela. A estratégia do CTI é impedir o caminho industrial fácil:
+Nenhum sistema web consegue impedir 100% a cópia do conteúdo que um usuário autorizado vê na tela. A estratégia do CTI continua:
 
 ```text
 login
@@ -103,33 +143,14 @@ login
 → IA completa liberada após a resposta
 ```
 
-Somado a rate limiting e WAF, isso torna scraping automatizado muito mais caro e detectável. Não coloque o banco em repositório público, pois isso contornaria toda a proteção do site.
+Somado aos limites de API, isso reduz fortemente a extração automatizada em massa.
 
-## 7. Próxima fase multiusuário
+## 10. Manutenção futura
 
-A aplicação já trabalha com `role=admin|user`. Quando houver múltiplos usuários, substituir `EnvUserStore` por banco persistente, com no mínimo:
+Sem necessidade de novos ciclos de pentest agora. Nova auditoria externa faz sentido somente quando houver:
 
-```text
-users
-- id
-- username/email
-- password_hash (Argon2id recomendado)
-- role
-- active
-- created_at
-- last_login_at
-```
-
-A futura área administrativa poderá criar, editar, desativar e resetar usuários. MFA deve ser priorizado para administradores.
-
-## 8. Depois do deploy
-
-Fazer pentest controlado da URL real, verificando: autenticação, bypass, CSRF, XSS/CSP, enumeração, scraping, rate limit, abuso de IA, PWA/cache, headers, WAF, previews e comportamento sob rajadas não destrutivas.
-
-
-## v15 — correções pós-auditoria
-- `pypdf` atualizado para 6.19.0 (corrige advisories de consumo excessivo de CPU/memória em versões antigas).
-- Corpo de requisição limitado por `CTI_MAX_BODY_BYTES` (default 1 MiB).
-- IA completa exige comprovante de resposta também para administrador.
-- Extração dinâmica de PEP/PDF fica restrita ao administrador.
-- Links externos no frontend aceitam apenas esquemas HTTP/HTTPS.
+- abertura para um volume maior de usuários;
+- mudança grande de arquitetura;
+- novos endpoints sensíveis;
+- integração de pagamentos;
+- incidente ou comportamento anormal nos logs.

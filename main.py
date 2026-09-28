@@ -19,7 +19,10 @@ from clinical_ai import explicacao_salva, gerar_dica_ia, gerar_explicacao_ia, st
 from conteudo_temas import CONTEUDO, ESTRATEGIA_POR_AREA
 from atualizacoes import AREAS as AREAS_ATUALIZACOES, buscar_atualizacoes
 from segunda_fase import catalogo as catalogo_segunda_fase, pep as pep_segunda_fase
-from security_auth import SessionManager, UserIdentity
+from security_auth import SessionManager
+from user_store import (
+    DuplicateUserError, UserConflictError, UserIdentity, UserNotFoundError, UserStoreError,
+)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(BASE, "static")
@@ -44,7 +47,7 @@ app = FastAPI(title="CTi – Centro de Treinamento Intensivo",
 from fastapi.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 if ORIGENS:
-    app.add_middleware(CORSMiddleware, allow_origins=ORIGENS, allow_methods=["GET", "POST"],
+    app.add_middleware(CORSMiddleware, allow_origins=ORIGENS, allow_methods=["GET", "POST", "PATCH", "DELETE"],
                        allow_headers=["Content-Type", "X-CSRF-Token", "X-Question-Token", "X-Answer-Token"])
 
 # JS saiu do HTML nesta versão; script inline/event handler não é mais permitido.
@@ -78,6 +81,23 @@ def _audit(event: str, request: Request, user: Optional[UserIdentity] = None, de
     if detail:
         payload["detail"] = detail[:160]
     _security_log.info("SECURITY %s", json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+
+
+def _persistent_audit(
+    action: str, request: Request, actor: Optional[UserIdentity] = None,
+    target_user_id: Optional[str] = None, target_username: Optional[str] = None,
+    metadata: Optional[dict] = None,
+) -> None:
+    """Auditoria administrativa persistente quando o Supabase estiver ativo."""
+    try:
+        SESSIONS.store.record_audit(
+            actor=actor, action=action, target_user_id=target_user_id,
+            target_username=target_username, ip_fingerprint=_fingerprint(_ip(request)),
+            metadata=metadata or {},
+        )
+    except Exception:
+        # O log persistente é complementar; a ação principal não pode cair por isso.
+        _security_log.exception("AUDIT_STORE_ERROR action=%s", action)
 
 
 def _limite(bucket: str, limite: int, janela: int, peso: int = 1) -> bool:
@@ -271,11 +291,16 @@ def auth_login(data: LoginRequest, request: Request):
     if not SESSIONS.configured:
         _audit("login_unavailable", request)
         raise HTTPException(503, "Acesso temporariamente indisponível.")
-    user = SESSIONS.store.authenticate(data.username, data.password)
+    try:
+        user = SESSIONS.store.authenticate(data.username, data.password)
+    except UserStoreError:
+        _audit("login_store_unavailable", request)
+        raise HTTPException(503, "Acesso temporariamente indisponível.")
     if not user:
         _audit("login_failed", request)
         raise HTTPException(401, "Usuário ou senha inválidos.")
     _audit("login_success", request, user)
+    _persistent_audit("login.success", request, user, target_user_id=user.user_id, target_username=user.username)
     resp = JSONResponse({"ok": True, "user": {"username": user.username, "role": user.role}})
     SESSIONS.set_cookie(resp, user)
     resp.headers["Cache-Control"] = "no-store"
@@ -298,6 +323,7 @@ def admin_security_status(request: Request):
     return {
         "auth_required": AUTH_REQUIRED,
         "auth_configured": SESSIONS.configured,
+        "session_secret_configured": bool(getattr(SESSIONS, "_secret_configured", False)),
         "session_cookie": SESSIONS.cookie_name,
         "session_ttl_seconds": SESSIONS.ttl,
         "rate_limit_api_min": RATE_LIMIT,
@@ -306,9 +332,182 @@ def admin_security_status(request: Request):
         "login_attempts_15min": LOGIN_ATTEMPTS,
         "max_body_bytes": MAX_BODY_BYTES,
         "rbac_ready": True,
-        "current_store": "environment-single-admin",
-        "future_user_store": "database-adapter",
+        "current_store": SESSIONS.store.mode,
+        "persistent_users": bool(SESSIONS.store.admin_status().get("persistent")),
+        "user_store_ready": bool(SESSIONS.store.admin_status().get("ready")),
     }
+
+
+# ------------------------------------------------ administração de usuários (v16)
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,50}$")
+
+
+class AdminUserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=50)
+    password: str = Field(min_length=12, max_length=256)
+    role: str = Field(default="user", pattern=r"^(admin|user)$")
+    active: bool = True
+
+
+class AdminUserUpdate(BaseModel):
+    username: Optional[str] = Field(default=None, min_length=3, max_length=50)
+    role: Optional[str] = Field(default=None, pattern=r"^(admin|user)$")
+    active: Optional[bool] = None
+
+
+class AdminPasswordReset(BaseModel):
+    password: str = Field(min_length=12, max_length=256)
+
+
+def _valid_username(value: str) -> str:
+    v = (value or "").strip()
+    if not USERNAME_RE.fullmatch(v):
+        raise HTTPException(422, "Use 3–50 caracteres: letras, números, ponto, hífen ou sublinhado.")
+    return v
+
+
+def _require_persistent_store(request: Request):
+    _admin(request)
+    status = SESSIONS.store.admin_status()
+    if status.get("mode") != "supabase":
+        raise HTTPException(503, "O banco persistente ainda não foi conectado.")
+    if not status.get("ready"):
+        if status.get("migration_required"):
+            raise HTTPException(503, "As tabelas do CTI ainda não foram criadas no Supabase.")
+        raise HTTPException(503, "O banco de usuários está temporariamente indisponível.")
+    return status
+
+
+def _map_store_error(exc: Exception) -> None:
+    if isinstance(exc, DuplicateUserError):
+        raise HTTPException(409, "Esse nome de usuário já está em uso.")
+    if isinstance(exc, UserNotFoundError):
+        raise HTTPException(404, "Usuário não encontrado.")
+    if isinstance(exc, UserConflictError):
+        raise HTTPException(409, str(exc))
+    if isinstance(exc, UserStoreError):
+        raise HTTPException(503, "Não foi possível acessar o banco de usuários agora.")
+    raise exc
+
+
+@app.get("/api/admin/users/status")
+def admin_users_status(request: Request):
+    current = _admin(request)
+    try:
+        status = SESSIONS.store.admin_status()
+    except Exception:
+        status = {"mode": getattr(SESSIONS.store, "mode", "unknown"), "configured": False, "ready": False}
+    return {**status, "current_user": {"id": current.user_id, "username": current.username, "role": current.role}}
+
+
+@app.get("/api/admin/users")
+def admin_users_list(request: Request):
+    _require_persistent_store(request)
+    try:
+        return {"items": SESSIONS.store.list_users()}
+    except Exception as exc:
+        _map_store_error(exc)
+
+
+@app.get("/api/admin/audit")
+def admin_audit_list(request: Request, limit: int = Query(80, ge=1, le=250)):
+    _require_persistent_store(request)
+    try:
+        return {"items": SESSIONS.store.list_audit(limit)}
+    except Exception as exc:
+        _map_store_error(exc)
+
+
+@app.post("/api/admin/users/bootstrap")
+def admin_users_bootstrap(request: Request):
+    current = _admin(request)
+    status = _require_persistent_store(request)
+    if not status.get("bootstrap_available"):
+        raise HTTPException(409, "A migração inicial não está disponível.")
+    try:
+        created = SESSIONS.store.bootstrap_env_admin()
+    except Exception as exc:
+        _map_store_error(exc)
+    _audit("admin_user_bootstrap", request, current, f"target={created.get('username')}")
+    _persistent_audit("user.bootstrap", request, current, created.get("id"), created.get("username"))
+    return {"ok": True, "user": created, "relogin_required": True}
+
+
+@app.post("/api/admin/users")
+def admin_user_create(data: AdminUserCreate, request: Request):
+    current = _admin(request)
+    _require_persistent_store(request)
+    username = _valid_username(data.username)
+    try:
+        created = SESSIONS.store.create_user(username, data.password, role=data.role, active=data.active)
+    except Exception as exc:
+        _map_store_error(exc)
+    _audit("admin_user_create", request, current, f"target={created.get('username')};role={created.get('role')}")
+    _persistent_audit("user.create", request, current, created.get("id"), created.get("username"), {"role": created.get("role"), "active": created.get("active")})
+    return {"ok": True, "user": created}
+
+
+@app.patch("/api/admin/users/{user_id}")
+def admin_user_update(user_id: str, data: AdminUserUpdate, request: Request):
+    current = _admin(request)
+    _require_persistent_store(request)
+    username = _valid_username(data.username) if data.username is not None else None
+    try:
+        users = SESSIONS.store.list_users()
+        target = next((u for u in users if str(u.get("id")) == str(user_id)), None)
+        if not target:
+            raise UserNotFoundError("Usuário não encontrado")
+        if str(target.get("id")) == str(current.user_id):
+            if username is not None and username != target.get("username"):
+                raise UserConflictError("Você não pode alterar seu próprio nome de usuário por este painel.")
+            if data.active is False:
+                raise UserConflictError("Você não pode desativar sua própria conta.")
+            if data.role == "user":
+                raise UserConflictError("Você não pode remover seu próprio acesso administrativo.")
+        if target.get("role") == "admin" and target.get("active"):
+            will_remove_admin = (data.role == "user") or (data.active is False)
+            if will_remove_admin and SESSIONS.store.active_admin_count() <= 1:
+                raise UserConflictError("É necessário manter pelo menos um administrador ativo.")
+        updated = SESSIONS.store.update_user(user_id, username=username, role=data.role, active=data.active)
+    except Exception as exc:
+        _map_store_error(exc)
+    _audit("admin_user_update", request, current, f"target={updated.get('username')}")
+    _persistent_audit("user.update", request, current, updated.get("id"), updated.get("username"), {"role": updated.get("role"), "active": updated.get("active")})
+    return {"ok": True, "user": updated}
+
+
+@app.post("/api/admin/users/{user_id}/reset-password")
+def admin_user_reset_password(user_id: str, data: AdminPasswordReset, request: Request):
+    current = _admin(request)
+    _require_persistent_store(request)
+    try:
+        updated = SESSIONS.store.reset_password(user_id, data.password)
+    except Exception as exc:
+        _map_store_error(exc)
+    _audit("admin_user_password_reset", request, current, f"target={updated.get('username')}")
+    _persistent_audit("user.password_reset", request, current, updated.get("id"), updated.get("username"))
+    return {"ok": True, "user": updated, "sessions_revoked": True}
+
+
+@app.delete("/api/admin/users/{user_id}")
+def admin_user_delete(user_id: str, request: Request):
+    current = _admin(request)
+    _require_persistent_store(request)
+    try:
+        users = SESSIONS.store.list_users()
+        target = next((u for u in users if str(u.get("id")) == str(user_id)), None)
+        if not target:
+            raise UserNotFoundError("Usuário não encontrado")
+        if str(target.get("id")) == str(current.user_id):
+            raise UserConflictError("Você não pode excluir sua própria conta.")
+        if target.get("role") == "admin" and target.get("active") and SESSIONS.store.active_admin_count() <= 1:
+            raise UserConflictError("É necessário manter pelo menos um administrador ativo.")
+        deleted = SESSIONS.store.soft_delete_user(user_id)
+    except Exception as exc:
+        _map_store_error(exc)
+    _audit("admin_user_delete", request, current, f"target={target.get('username')}")
+    _persistent_audit("user.delete", request, current, target.get("id"), target.get("username"))
+    return {"ok": True, "user": deleted, "soft_deleted": True}
 
 
 def publico(q: dict, com_gabarito: bool = False) -> dict:

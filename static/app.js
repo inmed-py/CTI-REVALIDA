@@ -41,10 +41,10 @@ let MISSAO = ls.get('medquest_missao', {streak:0, ultimoConcluido:null, vistas:[
 ERROS = ERROS.map(e => e.enunciado !== undefined ? {id:e.id, area:e.especialidade, tema:e.tema || '', adicionado:hoje(), estagio:0, proxima:hoje(), dominada:false, erros:1} : e);
 const salvar = () => { ls.set('medquest_historico', HIST.slice(-20000)); ls.set('medquest_erros', ERROS); ls.set('medquest_missao', MISSAO); atualizarHeader(); };
 
-let STATS = null, INDICE = [], IDX = {}, REFORCO = null;
+let STATS = null, INDICE = [], IDX = {}, REFORCO = null, AUTH_STATUS = null, ADMIN_STATUS = null;
 
 /* ============================================================ navegação interna do PWA */
-const ROTAS = new Set(['painel','missao','banco','simulado','erros','favoritos','desempenho','reforco','segunda','atualizacoes','quiz']);
+const ROTAS = new Set(['painel','missao','banco','simulado','erros','favoritos','desempenho','reforco','segunda','atualizacoes','admin','quiz']);
 let NAV_READY = false;
 function viewAtual(){
   const v = $('.view.on');
@@ -88,6 +88,13 @@ function aoVoltarDoSistema(e){
   mostrar(alvo, {semHistorico:true});
 }
 
+/* ============================================================ administração / RBAC visual */
+function configurarAcessoAdmin(){
+  const isAdmin = AUTH_STATUS?.user?.role === 'admin';
+  $$('.admin-only').forEach(el => el.hidden = !isAdmin);
+  if (!isAdmin && location.hash === '#admin') history.replaceState(estadoRota('painel'), '', '#painel');
+}
+
 /* ============================================================ inicialização */
 async function init(){
   history.replaceState(estadoRota('painel'), '', '#painel');
@@ -111,6 +118,9 @@ async function init(){
   $('#btnSino').onclick = () => mostrar('erros');
   $('#btnPerfil').onclick = editarPerfil; $('#shPerfil').onclick = () => { $('#sheet').classList.remove('on'); editarPerfil(); };
   aplicarPerfil();
+  AUTH_STATUS = await api('/api/auth/status');
+  configurarAcessoAdmin();
+  initAdminUI();
   [STATS, INDICE] = await Promise.all([api('/api/stats'), api('/api/indice')]);
   INDICE.forEach(i => IDX[i.id] = i);
   preencherFiltros();
@@ -147,6 +157,7 @@ function preencherFiltros(){
 
 function mostrar(v, opts = {}){
   if (!ROTAS.has(v)) v = 'painel';
+  if (v === 'admin' && AUTH_STATUS?.user?.role !== 'admin') v = 'painel';
   const atualAntes = viewAtual();
   if (!opts.semHistorico && atualAntes === 'segunda' && v !== 'segunda' && typeof F2S !== 'undefined' && F2S.est && F2S.fase === 'estacao'){
     if (!confirm('Sair da estação sem avaliar?')) return;
@@ -164,6 +175,7 @@ function mostrar(v, opts = {}){
   if (v === 'reforco') renderReforco();
   if (v === 'segunda') renderFase2();
   if (v === 'atualizacoes') renderAtualizacoes();
+  if (v === 'admin') renderAdmin();
   if (!opts.semHistorico) registrarRota(v, !!opts.substituir);
   window.scrollTo({top:0, behavior:opts.semHistorico ? 'auto' : 'smooth'});
 }
@@ -1209,6 +1221,172 @@ function verDestaque(){
 $('#dqVer').onclick = verDestaque;
 $('#dqFav').onclick = () => { if (!DQ) return; const on = toggleFav(DQ.q.id); $('#dqFav').classList.toggle('on', on); $('#dqFav').lastChild.textContent = on ? 'Favorita' : 'Favoritar'; };
 
+
+
+/* ============================================================ ADMINISTRAÇÃO DE USUÁRIOS */
+const adminFmtData = iso => {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}); }
+  catch { return '—'; }
+};
+const adminActionLabel = a => ({
+  'login.success':'Login', 'user.bootstrap':'Administrador migrado', 'user.create':'Usuário criado',
+  'user.update':'Usuário atualizado', 'user.password_reset':'Senha redefinida', 'user.delete':'Usuário excluído'
+}[a] || a || 'Evento');
+function adminMutate(url, method, body=null){
+  const opt = {method, credentials:'same-origin', cache:'no-store', headers:{'X-CSRF-Token':decodeURIComponent(cookieVal('cti_csrf'))}};
+  if (body !== null){ opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  return api(url, opt);
+}
+function gerarSenhaAdmin(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  const arr = new Uint32Array(16); crypto.getRandomValues(arr);
+  const core = [...arr].map(x => chars[x % chars.length]).join('');
+  return `Aa7!${core}`;
+}
+function adminSetupHtml(st){
+  if (st.mode !== 'supabase') return `<div class="admin-setup-box">
+    <h3>${ic('users')}Painel pronto para usuários persistentes</h3>
+    <p>O CTi continua funcionando normalmente com o administrador atual.</p>
+    <p class="small muted">Quando o Supabase exclusivo do CTi for criado, basta adicionar as variáveis de conexão na Vercel e aplicar o arquivo <b>supabase/cti_users.sql</b>. Nenhuma mudança visual adicional será necessária.</p>
+    <span class="pill">Modo atual · administrador único</span>
+  </div>`;
+  if (!st.ready && st.migration_required) return `<div class="admin-setup-box">
+    <h3>${ic('alert')}Conexão detectada — falta criar as tabelas</h3>
+    <p>O Supabase está configurado, mas as tabelas de usuários do CTi ainda não foram criadas.</p>
+    <p class="small muted">Execute <b>supabase/cti_users.sql</b> no SQL Editor do projeto Supabase e depois toque em Atualizar.</p>
+  </div>`;
+  if (!st.ready) return `<div class="admin-setup-box">
+    <h3>${ic('alert')}Banco de usuários temporariamente indisponível</h3>
+    <p class="small muted">O CTi mantém o acesso atual. Verifique as variáveis do Supabase e tente novamente.</p>
+  </div>`;
+  if (st.bootstrap_available) return `<div class="admin-setup-box">
+    <h3>${ic('shield')}Banco conectado</h3>
+    <p>O banco está vazio. Migre o administrador atual para iniciar a gestão persistente de usuários.</p>
+    <button class="btn" id="adminBootstrap">${ic('users')}Migrar administrador atual</button>
+    <p class="tiny muted">Após a migração, o CTi solicitará um novo login.</p>
+  </div>`;
+  return `<div class="admin-setup-box">
+    <div class="row" style="justify-content:space-between"><div><h3>${ic('check')}Usuários persistentes ativos</h3><p class="small muted">Banco conectado e pronto.</p></div><span class="pill ok">Supabase conectado</span></div>
+  </div>`;
+}
+async function renderAdmin(){
+  if (AUTH_STATUS?.user?.role !== 'admin') return;
+  const setup = $('#adminSetup');
+  setup.innerHTML = `<div class="empty small">Carregando administração…</div>`;
+  $('#adminPersistent').hidden = true;
+  try {
+    ADMIN_STATUS = await api('/api/admin/users/status');
+    setup.innerHTML = adminSetupHtml(ADMIN_STATUS);
+    const bootstrapBtn = $('#adminBootstrap');
+    if (bootstrapBtn) bootstrapBtn.onclick = adminBootstrap;
+    const canManage = ADMIN_STATUS.mode === 'supabase' && ADMIN_STATUS.ready && !ADMIN_STATUS.bootstrap_available;
+    $('#adminPersistent').hidden = !canManage;
+    if (canManage) await adminCarregarDados();
+  } catch (e) {
+    setup.innerHTML = `<div class="admin-setup-box"><h3>${ic('alert')}Não foi possível abrir a administração</h3><p class="small muted">${esc(e.message)}</p></div>`;
+  }
+}
+async function adminBootstrap(){
+  if (!confirm('Migrar o administrador atual para o banco persistente do CTi?')) return;
+  try {
+    const r = await post('/api/admin/users/bootstrap', {});
+    if (r.relogin_required){
+      alert('Administrador migrado. Entre novamente com o mesmo usuário e senha.');
+      location.replace('/?reason=users-migrated');
+      return;
+    }
+    await renderAdmin();
+  } catch (e) { toast(e.message); }
+}
+async function adminCarregarDados(){
+  const [ur, ar] = await Promise.all([api('/api/admin/users'), api('/api/admin/audit?limit=80')]);
+  const users = ur.items || [], audit = ar.items || [];
+  const ativos = users.filter(u => u.active).length, admins = users.filter(u => u.active && u.role === 'admin').length;
+  $('#adminKpis').innerHTML = `<div class="kpi"><b>${users.length}</b><span>Usuários cadastrados</span></div><div class="kpi"><b>${ativos}</b><span>Ativos</span></div><div class="kpi"><b>${admins}</b><span>Administradores ativos</span></div><div class="kpi"><b>${users.length - ativos}</b><span>Desativados</span></div>`;
+  $('#adminUserCount').textContent = `${users.length} cadastro${users.length === 1 ? '' : 's'}`;
+  adminRenderUsers(users);
+  adminRenderAudit(audit);
+}
+function adminRenderUsers(users){
+  const me = ADMIN_STATUS?.current_user?.id;
+  if (!users.length){ $('#adminUsers').innerHTML = `<div class="empty">Nenhum usuário persistente.</div>`; return; }
+  $('#adminUsers').innerHTML = users.map(u => {
+    const self = String(u.id) === String(me);
+    return `<div class="admin-user ${self ? 'me' : ''}" data-user-id="${esc(u.id)}" data-user-name="${esc(u.username)}" data-self="${self ? '1' : '0'}">
+      <label class="f">Usuário<input type="text" class="au-name" maxlength="50" value="${esc(u.username)}" ${self ? 'disabled' : ''}></label>
+      <label class="f">Perfil<select class="au-role" ${self ? 'disabled' : ''}><option value="user" ${u.role === 'user' ? 'selected' : ''}>Usuário</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrador</option></select></label>
+      <label class="admin-status"><input type="checkbox" class="au-active" ${u.active ? 'checked' : ''} ${self ? 'disabled' : ''}>${u.active ? 'Ativo' : 'Desativado'}</label>
+      <div class="admin-meta"><b>${self ? 'Sua conta' : esc(u.role === 'admin' ? 'Administrador' : 'Usuário')}</b><br>Último acesso: ${adminFmtData(u.last_login_at)}<br>Criado: ${adminFmtData(u.created_at)}</div>
+      <div class="admin-actions"><button class="btn sec sm au-save">Salvar</button><button class="btn sec sm au-password">Redefinir senha</button><button class="btn sm au-delete" ${self ? 'disabled' : ''}>Excluir</button></div>
+    </div>`;
+  }).join('');
+}
+function adminRenderAudit(items){
+  if (!items.length){ $('#adminAudit').innerHTML = `<div class="empty small">As ações administrativas aparecerão aqui.</div>`; return; }
+  $('#adminAudit').innerHTML = items.map(x => `<div class="admin-audit-item"><time>${adminFmtData(x.created_at)}</time><b>${esc(adminActionLabel(x.action))}</b><span>${esc(x.actor_username || 'sistema')} → ${esc(x.target_username || '—')}</span><span class="muted">${esc(x.ip_fingerprint || '')}</span></div>`).join('');
+}
+async function adminSalvarUsuario(row){
+  const id = row.dataset.userId;
+  const username = row.querySelector('.au-name').value.trim();
+  const role = row.querySelector('.au-role').value;
+  const active = row.querySelector('.au-active').checked;
+  try {
+    await adminMutate('/api/admin/users/' + encodeURIComponent(id), 'PATCH', {username, role, active});
+    toast('Usuário atualizado.'); await renderAdmin();
+  } catch (e){ toast(e.message); }
+}
+function adminAbrirSenha(row){
+  const d = $('#adminPwdDialog');
+  d.dataset.userId = row.dataset.userId; d.dataset.userName = row.dataset.userName; d.dataset.self = row.dataset.self || '0';
+  $('#adminPwdTitle').textContent = `Nova senha para ${row.dataset.userName}`;
+  $('#adminPwdValue').value = '';
+  if (typeof d.showModal === 'function') d.showModal(); else d.setAttribute('open','');
+  setTimeout(() => $('#adminPwdValue').focus(), 50);
+}
+async function adminExcluirUsuario(row){
+  if (!confirm(`Excluir o acesso de ${row.dataset.userName}? O histórico administrativo será preservado.`)) return;
+  try {
+    await adminMutate('/api/admin/users/' + encodeURIComponent(row.dataset.userId), 'DELETE');
+    toast('Usuário excluído.'); await renderAdmin();
+  } catch (e){ toast(e.message); }
+}
+function initAdminUI(){
+  const refresh = $('#adminRefresh'); if (refresh) refresh.onclick = renderAdmin;
+  const form = $('#adminCreateForm');
+  if (form) form.onsubmit = async e => {
+    e.preventDefault();
+    const username = $('#adminNewUsername').value.trim(), password = $('#adminNewPassword').value, role = $('#adminNewRole').value;
+    try {
+      await post('/api/admin/users', {username, password, role, active:true});
+      form.reset(); $('#adminGenerated').hidden = true; toast('Usuário criado.'); await renderAdmin();
+    } catch (err){ toast(err.message); }
+  };
+  const gen = $('#adminGeneratePassword'); if (gen) gen.onclick = () => {
+    const pwd = gerarSenhaAdmin(); $('#adminNewPassword').value = pwd; $('#adminGeneratedValue').textContent = pwd; $('#adminGenerated').hidden = false;
+  };
+  const copy = $('#adminCopyPassword'); if (copy) copy.onclick = async () => {
+    const v = $('#adminGeneratedValue').textContent; if (!v) return;
+    try { await navigator.clipboard.writeText(v); toast('Senha copiada.'); } catch { toast('Selecione e copie a senha exibida.'); }
+  };
+  const users = $('#adminUsers'); if (users) users.addEventListener('click', e => {
+    const row = e.target.closest('.admin-user'); if (!row) return;
+    if (e.target.closest('.au-save')) adminSalvarUsuario(row);
+    else if (e.target.closest('.au-password')) adminAbrirSenha(row);
+    else if (e.target.closest('.au-delete')) adminExcluirUsuario(row);
+  });
+  const pwdForm = $('#adminPwdForm'); if (pwdForm) pwdForm.onsubmit = async e => {
+    e.preventDefault(); const d = $('#adminPwdDialog'), password = $('#adminPwdValue').value;
+    if (password.length < 12){ toast('A senha precisa ter pelo menos 12 caracteres.'); return; }
+    try {
+      await post('/api/admin/users/' + encodeURIComponent(d.dataset.userId) + '/reset-password', {password});
+      d.close ? d.close() : d.removeAttribute('open');
+      if (d.dataset.self === '1'){ alert('Senha redefinida. Entre novamente com a nova senha.'); location.replace('/?reason=password-reset'); return; }
+      toast('Senha redefinida e sessões anteriores revogadas.'); await renderAdmin();
+    } catch (err){ toast(err.message); }
+  };
+  const cancel = $('#adminPwdCancel'); if (cancel) cancel.onclick = () => { const d = $('#adminPwdDialog'); d.close ? d.close() : d.removeAttribute('open'); };
+}
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-train-area],[data-train-tema],[data-open-reforco],[data-open-reforco-area]');
