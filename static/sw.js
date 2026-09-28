@@ -1,7 +1,7 @@
 /* CTi – Service Worker privado
    Segurança > offline: NÃO armazena HTML autenticado, questões, gabaritos ou respostas de IA.
    Apenas ativos públicos (ícones, fontes, imagens) ficam em cache. */
-const VERSAO = 'cti-v14-security-hardening';
+const VERSAO = 'cti-v15-pentest-hardening';
 const SHELL = `${VERSAO}-public`;
 const ARQUIVOS = [
   '/static/offline.html', '/static/manifest.json', '/static/fonts/inter-latin.woff2',

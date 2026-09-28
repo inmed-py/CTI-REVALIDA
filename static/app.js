@@ -2,6 +2,7 @@
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const LETRAS = 'ABCDEFGH'.split('');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeHref = u => { try { const x = new URL(String(u || ''), location.origin); return (x.protocol === 'https:' || x.protocol === 'http:') ? x.href : '#'; } catch { return '#'; } };
 const hoje = () => new Date().toLocaleDateString('sv-SE');
 const addDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('sv-SE'); };
 const fmtData = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', {weekday:'short', day:'2-digit', month:'2-digit'});
@@ -777,7 +778,7 @@ function f2Impressos(e, revelar){
   if (!e.impressos.length) return '<p class="small muted">Esta estação não tem impressos.</p>';
   return e.impressos.map((im, i) => `<details class="f2-imp"${revelar ? ' open' : ''}><summary>${ic(im.imagem ? 'img' : 'doc')}${esc(im.titulo)}<span class="tiny muted" style="margin-left:auto">${revelar ? '' : 'solicitar'}</span></summary>
     <div class="corpo">${im.texto ? `<div class="f2-txt small">${f2Texto(im.texto)}</div>` : ''}
-    ${im.imagem ? `<p class="small" style="margin:${im.texto ? '10px' : '0'} 0 0">${ic('img')} Este impresso tem imagem (foto, ECG, exame de imagem ou tabela). <a href="${esc(e.fonte.prova_pdf)}#page=${im.pagina}" target="_blank" rel="noopener">Abrir no PDF oficial do INEP – pág. ${im.pagina}</a></p>` : `<p class="tiny muted" style="margin:8px 0 0"><a href="${esc(e.fonte.prova_pdf)}#page=${im.pagina}" target="_blank" rel="noopener">Ver o impresso original (PDF do INEP, pág. ${im.pagina})</a></p>`}</div></details>`).join('');
+    ${im.imagem ? `<p class="small" style="margin:${im.texto ? '10px' : '0'} 0 0">${ic('img')} Este impresso tem imagem (foto, ECG, exame de imagem ou tabela). <a href="${esc(safeHref(e.fonte.prova_pdf))}#page=${im.pagina}" target="_blank" rel="noopener">Abrir no PDF oficial do INEP – pág. ${im.pagina}</a></p>` : `<p class="tiny muted" style="margin:8px 0 0"><a href="${esc(safeHref(e.fonte.prova_pdf))}#page=${im.pagina}" target="_blank" rel="noopener">Ver o impresso original (PDF do INEP, pág. ${im.pagina})</a></p>`}</div></details>`).join('');
 }
 function f2Cab(e){
   return `<div class="row" style="justify-content:space-between;align-items:flex-start">
@@ -857,7 +858,7 @@ function f2RenderRes(){
     <div class="card"><h3>${ic('img')}Impressos da estação</h3>${f2Impressos(e, true)}</div>
     ${e.referencias ? `<div class="card"><h3>${ic('book')}Referências citadas pelo INEP</h3><div class="f2-txt small">${esc(e.referencias)}</div></div>` : ''}
     <div class="card"><h3>${ic('doc')}Treino escrito complementar</h3><p class="small muted">Estes documentos são sugeridos para ampliar a preparação. Só fazem parte da pontuação histórica quando o PEP original os exige explicitamente.</p><div class="row">${f2DocsRecomendados(e).map(id=>{const d=D2_DOCS.find(x=>x.id===id);return `<button class="btn sec sm f2-doc-go" data-doc="${id}">${ic('doc')}${esc(d.titulo)}</button>`}).join('')}</div></div>
-    <div class="card"><p class="small muted" style="margin:0">Fonte: INEP – Revalida ${esc(e.edicao_rotulo)}, 2ª etapa. <a href="${esc(e.fonte.prova_pdf)}#page=${e.fonte.pagina_prova}" target="_blank" rel="noopener">Caderno da prova</a> · <a href="${esc(e.fonte.pep_pdf)}#page=${e.fonte.pagina_pep}" target="_blank" rel="noopener">PEP oficial${e.pep_preliminar ? ' (preliminar)' : ''}</a></p></div>`;
+    <div class="card"><p class="small muted" style="margin:0">Fonte: INEP – Revalida ${esc(e.edicao_rotulo)}, 2ª etapa. <a href="${esc(safeHref(e.fonte.prova_pdf))}#page=${e.fonte.pagina_prova}" target="_blank" rel="noopener">Caderno da prova</a> · <a href="${esc(safeHref(e.fonte.pep_pdf))}#page=${e.fonte.pagina_pep}" target="_blank" rel="noopener">PEP oficial${e.pep_preliminar ? ' (preliminar)' : ''}</a></p></div>`;
   $('#f2Refazer').onclick = () => abrirEstacao(e.id);
   $('#f2Outra').onclick = f2Sair;
   $('#f2Voltar').onclick = f2Sair;
@@ -963,7 +964,7 @@ function d2Abrir(id){
     <div class="doc-editor"><div>
       <div class="card"><h3>${ic('steth')}Caso para treino</h3><div class="doc-case">${esc(d.caso)}</div></div>
       <div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">${ic('doc')}Preencha o documento</h3><span class="pill">nota de treino CTI · 0–10</span></div><div class="doc-fields" style="margin-top:12px">${d.fields.map(f=>`<div class="doc-field"><label>${esc(f[1])}</label><div class="tiny muted" style="margin-bottom:5px">${esc(f[2])}</div><textarea id="d2_${f[0]}" placeholder="Escreva como faria na prova..."></textarea></div>`).join('')}</div><div class="row" style="margin-top:14px"><button class="btn" id="d2Corrigir">${ic('check')}Corrigir e comparar</button><button class="btn sec" id="d2Limpar">Limpar</button></div></div>
-    </div><aside><div class="card"><h3>${ic('book')}Base de referência</h3><p class="small muted">${esc(d.fonte)}</p>${d.url?`<a class="btn sec sm" href="${esc(d.url)}" target="_blank" rel="noopener">Abrir fonte oficial</a>`:''}<div class="doc-note" style="margin-top:10px">A nota abaixo é um instrumento de treino do CTI. Quando houver formulário oficial, o conteúdo deve ser conferido na versão vigente da fonte original.</div></div>${hist.length?`<div class="card"><h3>Histórico</h3><div class="doc-history">${hist.slice(-10).map(h=>`<span>${esc(h.data)} · ${f2Fmt(h.nota)}</span>`).join('')}</div></div>`:''}<div id="d2Resultado"></div></aside></div>`;
+    </div><aside><div class="card"><h3>${ic('book')}Base de referência</h3><p class="small muted">${esc(d.fonte)}</p>${d.url?`<a class="btn sec sm" href="${esc(safeHref(d.url))}" target="_blank" rel="noopener">Abrir fonte oficial</a>`:''}<div class="doc-note" style="margin-top:10px">A nota abaixo é um instrumento de treino do CTI. Quando houver formulário oficial, o conteúdo deve ser conferido na versão vigente da fonte original.</div></div>${hist.length?`<div class="card"><h3>Histórico</h3><div class="doc-history">${hist.slice(-10).map(h=>`<span>${esc(h.data)} · ${f2Fmt(h.nota)}</span>`).join('')}</div></div>`:''}<div id="d2Resultado"></div></aside></div>`;
   $('#d2Voltar').onclick=()=>{box.hidden=true;$('#d2Grid').hidden=false;d2RenderHome();window.scrollTo({top:0,behavior:'smooth'})};
   $('#d2Limpar').onclick=()=>d.fields.forEach(f=>{const el=$('#d2_'+f[0]); if(el)el.value=''});
   $('#d2Corrigir').onclick=()=>d2Corrigir(d);
@@ -1015,10 +1016,10 @@ function renderUpdCards(){
       <h3>${esc(x.titulo)}</h3>
       <p>${esc(x.resumo)}</p>
       <div class="upd-meta"><span class="tiny muted">${ic('cal')} ${esc(fmtUpdData(x.data))}</span>${x.relevancia ? `<span class="tiny muted">· ${esc(x.relevancia)}</span>` : ''}${x.grounded === false ? '<span class="pill warn">Confirmar na fonte</span>' : ''}</div>
-      <div class="upd-source"><div><b>${esc(x.fonte_nome || 'Fonte')}</b><span>${x.fonte_nivel === 'oficial' ? 'Publicação institucional/oficial' : 'Fonte secundária previamente verificada pelo CTi'}</span></div><a class="upd-link" href="${esc(x.fonte_url)}" target="_blank" rel="noopener noreferrer">Abrir fonte ${ic('arrow')}</a></div>
+      <div class="upd-source"><div><b>${esc(x.fonte_nome || 'Fonte')}</b><span>${x.fonte_nivel === 'oficial' ? 'Publicação institucional/oficial' : 'Fonte secundária previamente verificada pelo CTi'}</span></div><a class="upd-link" href="${esc(safeHref(x.fonte_url))}" target="_blank" rel="noopener noreferrer">Abrir fonte ${ic('arrow')}</a></div>
     </article>`; }).join('')}</div>` : `<div class="card empty">Nenhuma atualização encontrada com este filtro. Isso não significa que não existam mudanças; tente outro período ou toque em “Atualizar agora”.</div>`;
   const canais = UPD_DATA.fontes_fixadas || [];
-  if (canais.length){ $('#uCanais').hidden = false; $('#uCanaisLista').innerHTML = canais.map(x => `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${x.nivel === 'oficial' ? '✓' : '◐'} ${esc(x.nome)}</a>`).join(''); }
+  if (canais.length){ $('#uCanais').hidden = false; $('#uCanaisLista').innerHTML = canais.map(x => `<a href="${esc(safeHref(x.url))}" target="_blank" rel="noopener noreferrer">${x.nivel === 'oficial' ? '✓' : '◐'} ${esc(x.nome)}</a>`).join(''); }
 }
 async function carregarAtualizacoes(force=false){
   if (UPD_BUSY) return;

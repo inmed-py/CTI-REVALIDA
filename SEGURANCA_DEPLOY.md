@@ -125,3 +125,11 @@ A futura área administrativa poderá criar, editar, desativar e resetar usuári
 ## 8. Depois do deploy
 
 Fazer pentest controlado da URL real, verificando: autenticação, bypass, CSRF, XSS/CSP, enumeração, scraping, rate limit, abuso de IA, PWA/cache, headers, WAF, previews e comportamento sob rajadas não destrutivas.
+
+
+## v15 — correções pós-auditoria
+- `pypdf` atualizado para 6.19.0 (corrige advisories de consumo excessivo de CPU/memória em versões antigas).
+- Corpo de requisição limitado por `CTI_MAX_BODY_BYTES` (default 1 MiB).
+- IA completa exige comprovante de resposta também para administrador.
+- Extração dinâmica de PEP/PDF fica restrita ao administrador.
+- Links externos no frontend aceitam apenas esquemas HTTP/HTTPS.

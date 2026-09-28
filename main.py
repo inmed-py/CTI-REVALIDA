@@ -34,6 +34,7 @@ HEAVY_RATE_LIMIT = int(os.environ.get("CTI_HEAVY_RATE_LIMIT", "8"))
 LOGIN_ATTEMPTS = int(os.environ.get("CTI_LOGIN_ATTEMPTS", "8"))
 ANSWER_BATCH_LIMIT = int(os.environ.get("CTI_ANSWER_BATCH_LIMIT", "6"))
 QUESTION_VIEW_LIMIT = int(os.environ.get("CTI_QUESTION_VIEW_LIMIT", "220"))
+MAX_BODY_BYTES = int(os.environ.get("CTI_MAX_BODY_BYTES", "1048576"))
 AUTH_REQUIRED = os.environ.get("CTI_REQUIRE_AUTH", "1" if PROD else "0").strip().lower() not in ("0", "false", "no", "off")
 EXAMES_OCULTOS = {e.strip() for e in os.environ.get("CTI_OCULTAR_EXAMES", "").split(",") if e.strip()}
 SESSIONS = SessionManager(PROD)
@@ -58,7 +59,11 @@ if not _security_log.handlers:
 
 
 def _ip(request: Request) -> str:
-    return (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
+    # Na Vercel, x-vercel-forwarded-for/x-forwarded-for são normalizados pela plataforma.
+    raw = (request.headers.get("x-vercel-forwarded-for") if PROD else None) \
+        or request.headers.get("x-forwarded-for") \
+        or (request.client.host if request.client else "?")
+    return str(raw).split(",")[0].strip()
 
 
 def _fingerprint(value: str) -> str:
@@ -135,6 +140,17 @@ async def seguranca(request: Request, call_next):
     session_token = request.cookies.get(SESSIONS.cookie_name)
     user = SESSIONS.decode(session_token) if (AUTH_REQUIRED and SESSIONS.configured) else None
     request.state.user = user
+
+    # Limita payloads antes de o FastAPI/Pydantic ler o corpo. O app normal usa poucos KB.
+    if request.method in ("POST", "PUT", "PATCH") and MAX_BODY_BYTES > 0:
+        try:
+            content_length = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            content_length = 0
+        if content_length > MAX_BODY_BYTES:
+            _audit("body_too_large", request, user, f"bytes={content_length}")
+            return JSONResponse({"detail": "Solicitação grande demais."}, status_code=413,
+                                headers={"Cache-Control": "no-store"})
 
     if path == "/api/auth/login" and request.method == "POST":
         if _limite(f"login:{_ip(request)}", LOGIN_ATTEMPTS, 900):
@@ -288,6 +304,7 @@ def admin_security_status(request: Request):
         "rate_limit_ia_min": AI_RATE_LIMIT,
         "rate_limit_heavy_min": HEAVY_RATE_LIMIT,
         "login_attempts_15min": LOGIN_ATTEMPTS,
+        "max_body_bytes": MAX_BODY_BYTES,
         "rbac_ready": True,
         "current_store": "environment-single-admin",
         "future_user_store": "database-adapter",
@@ -339,9 +356,7 @@ def _verificar_answer_token(request: Request, question_id: int, token: str | Non
     if not AUTH_REQUIRED:
         return
     u = _user(request)
-    # O administrador pode revisar questões históricas salvas antes da implantação dos receipts.
-    if u and u.role == "admin":
-        return
+    # Mesmo administrador precisa ter confirmado a resposta antes de pedir a análise.
     if not u or not SESSIONS.verify_scope(token, u, "answered", question_id):
         _audit("answer_token_denied", request, u, str(question_id))
         raise HTTPException(403, "Confirme a resposta antes de solicitar esta análise.")
@@ -695,18 +710,18 @@ def estacao(est_id: str):
 
 @app.get("/api/segunda-fase/catalogo")
 def segunda_fase_catalogo(request: Request, force: bool = False):
-    """Catálogo gratuito dos PEPs oficiais da 2ª etapa do Revalida."""
+    """Ferramenta administrativa de descoberta/extração de PEP oficial."""
+    _admin(request)
     if force:
-        _admin(request)
         _audit("admin_force_pep_catalog", request, _user(request))
     return catalogo_segunda_fase(force=force)
 
 
 @app.get("/api/segunda-fase/pep")
 def segunda_fase_pep(request: Request, edicao: str, force: bool = False):
-    """Extrai, sob demanda, estações e itens de checklist de um PEP oficial do INEP."""
+    """Extrai PEP oficial sob demanda; reservado ao administrador por consumir rede/CPU."""
+    _admin(request)
     if force:
-        _admin(request)
         _audit("admin_force_pep", request, _user(request), f"edicao={edicao}")
     try:
         return pep_segunda_fase(edicao=edicao, force=force)
