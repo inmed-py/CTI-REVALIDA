@@ -147,3 +147,6 @@ CTI_MINI_ENRICH_MAX_PROVIDERS=1
 ```
 
 Valores aceitos: 1 a 3. Manter `1` é recomendado para o modo de baixo custo. Mesmo se a contextualização falhar, o treino permanece funcional no modelo estático.
+
+## v28 — Coerência da miniestação
+A miniestação não chama IA automaticamente ao abrir. O modelo local aparece imediatamente e permanece soberano. Se o aluno quiser enriquecimento adicional, usa `Aprimorar com IA` antes de iniciar as seleções. O patch da IA é filtrado para não trocar o domínio clínico do caso; em particular, conteúdo obstétrico exclusivo não é aceito em roteiros ginecológicos sem evidência explícita de gestação.

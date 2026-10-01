@@ -585,6 +585,9 @@ Regras:
 - Se o caso for procedural, detalhe sequência/segurança técnica apenas quando a questão realmente permitir.
 - Se a questão envolver tratamento, contextualize conduta e, quando pertinente, prescrição/classe farmacológica sem inventar dados ausentes.
 
+TIPO DO MODELO: {tipo}
+- O tipo do modelo é soberano. Se for ginecologia/ginecologia_amenorreia, NÃO converta o caso em gestação/obstetrícia sem evidência explícita na questão.
+
 ETAPAS DO MODELO:
 {etapas}
 
@@ -607,27 +610,86 @@ def _mini_clinica(q: dict) -> bool:
 
 
 def _mini_tipo_template(q: dict) -> str:
-    area = _sem_acentos(str(q.get("especialidade") or "")).lower()
+    """Classifica pela síndrome/problema central, não por qualquer palavra solta.
+
+    v28 usa sobretudo ENUNCIADO + TEMA. A resposta correta pode conter termos
+    incidentais (ex.: amenorreia em hipertireoidismo, "técnicas cirúrgicas" em
+    encaminhamento bariátrico) e por isso não decide o template por si só.
+    """
+    area = _sem_acentos(" ".join(str(q.get(k) or "") for k in ("especialidade", "especialidade_original"))).lower()
     tema = _sem_acentos(str(q.get("tema") or "")).lower()
-    txt = _sem_acentos(" ".join(str(q.get(k) or "") for k in ("enunciado", "tema", "resposta_correta_texto"))).lower()
-    procedural = (
-        "procedimento", "tecnica", "passo a passo", "puncao", "toracocent", "paracent", "intub", "cricotir", "traqueost",
-        "cateter", "sondagem", "sutura", "drenagem", "biops", "incisao", "lavagem", "reanimacao", "rcp", "cardiovers",
-        "desfibril", "parto vaginal", "manobra de", "curativo", "imobiliz", "acesso venoso",
+    enun = _sem_acentos(str(q.get("enunciado") or "")).lower()
+    txt = f"{tema} {enun}".strip()
+
+    # Procedimento: nomes específicos têm alta prioridade. Termos genéricos
+    # como "técnica" só contam quando a pergunta realmente pede execução.
+    proc_especificos = (
+        "toracocent", "paracent", "intub", "cricotir", "traqueost", "cateterismo", "cateter venoso",
+        "sondagem vesical", "sutura", "drenagem de", "biopsia", "incisao e drenagem", "lavagem peritoneal",
+        "reanimacao cardiopulmonar", "cardiovers", "desfibril", "acesso venoso", "curativo", "imobiliz",
     )
-    if any(x in txt for x in procedural):
+    proc_pedido = (
+        "como realizar", "passo a passo", "etapas do procedimento", "tecnica correta", "tecnica indicada",
+        "procedimento indicado", "procedimento correto", "qual procedimento", "realizar o procedimento",
+    )
+    if any(x in txt for x in proc_especificos) or any(x in txt for x in proc_pedido):
         return "procedimento"
-    if "ginecologia" in area or "obstetric" in area or any(x in txt for x in ("gestante", "gravida", "gestacao", "puerper", "parto", "sangramento vaginal")):
-        return "obstetricia"
-    if "pediatria" in area or any(x in txt for x in ("crianca", "lactente", "recem-nasc", "neonato", "escolar", "adolescente")):
-        return "pediatria"
-    if any(x in txt for x in ("ideacao suic", "alucin", "delirio", "psicose", "mania", "depress", "transtorno mental", "agitado", "estado mental")) or "psiquiatr" in tema:
-        return "psiquiatria"
-    emergencia = (
-        "instavel", "choque", "parada", "emergencia", "urgencia", "trauma", "rebaixamento", "hipotens", "dessatur",
-        "dispneia intensa", "dor toracica", "anafilax", "convuls", "sepse", "hemorragia", "avc", "infarto",
+
+    # Obstetrícia: exige marcador inequívoco de gestação/parto/puerpério no caso.
+    obstetricos_fortes = (
+        "gestante", "gravida", "primigesta", "secundigesta", "multigesta", "gestacao", "idade gestacional",
+        "semanas de amenorreia" if any(x in enun for x in ("primigesta", "secundigesta", "multigesta", "pre-natal", "prenatal")) else "__nao_usar__",
+        "semanas de gestacao", "semana gestacional", "pre-natal", "prenatal", "puerpera", "puerperio", "parturiente",
+        "trabalho de parto", "parto vaginal", "cesarea", "cesariana", "movimentos fetais", "batimentos cardiacos fetais",
+        "bcf", "feto", "fetal", "placenta", "bolsa rota", "ruptura de membranas", "liquido amniotico", "cordao umbilical",
+        "eclampsia", "pre-eclampsia", "hiperemese gravidica",
     )
-    if any(x in txt for x in emergencia):
+    if any(x in txt for x in obstetricos_fortes):
+        return "obstetricia"
+
+    # Amenorreia só vira roteiro próprio quando é o problema central, não quando
+    # aparece como sintoma acessório de outra doença (p.ex. hipertireoidismo).
+    amen_term = "amenorreia" in enun or "sem menarca" in enun or "menarca ausente" in enun
+    amen_central = (
+        "amenorreia primaria" in enun
+        or "amenorreia secundaria" in enun
+        or "avaliacao de amenorreia" in enun
+        or "queixa de amenorreia" in enun
+        or (amen_term and any(x in tema for x in ("ginecologia endocrina", "reprodutiva", "amenorreia")))
+    )
+    gineco_estruturais = (
+        "canal vaginal", "vagina", "utero", "colo uterino", "cervix", "ovario", "ovariano", "massa anexial",
+        "infertilidade", "dismenorreia", "oligomenorreia", "ciclo menstrual", "sangramento uterino", "sangramento vaginal",
+        "menarca", "climaterio", "menopausa", "vulva", "corrimento vaginal", "doenca inflamatoria pelvica",
+        "endometriose", "mioma", "leiomioma", "hiperandrogen", "hirsutismo", "ovarios policisticos",
+    )
+    gineco_hits = sum(1 for x in gineco_estruturais if x in enun)
+    if amen_central or (amen_term and gineco_hits >= 2):
+        return "ginecologia_amenorreia"
+
+    # Ginecologia geral: especialidade/tema coerentes OU múltiplos marcadores
+    # do aparelho reprodutor; uma palavra isolada não basta.
+    area_gineco = "ginecologia" in area or any(x in tema for x in ("ginecologia", "colo uterino", "endometr", "ovario", "climaterio"))
+    if (area_gineco and gineco_hits >= 1) or gineco_hits >= 2:
+        return "ginecologia"
+
+    if "pediatria" in area or any(x in enun for x in ("crianca", "lactente", "recem-nasc", "neonato", "escolar", "adolescente")):
+        return "pediatria"
+
+    # Psiquiatria: depressão/agitação isoladas podem ser comorbidades de outro caso.
+    psych_strong = ("ideacao suic", "tentativa de suic", "alucin", "psicose", "surto psicot", "mania", "estado mental")
+    psych_hits = sum(1 for x in ("depress", "ansiedad", "delirio", "agitado", "uso de substancia", "abstinencia", "transtorno mental") if x in enun)
+    if "psiquiatr" in area or "psiquiatr" in tema or any(x in enun for x in psych_strong) or psych_hits >= 2:
+        return "psiquiatria"
+
+    # Emergência: sintomas comuns isolados (dor torácica, trauma citado etc.) não
+    # bastam; prioriza sinais de instabilidade/tempo-dependência ou tema explícito.
+    emerg_strong = (
+        "instavel", "choque", "parada card", "rebaixamento do nivel", "dessatur", "anafilax", "estado de mal",
+        "sepse", "hemorragia macica", "avc agudo", "infarto com supra", "politrauma", "trauma grave",
+    )
+    emerg_area = any(x in tema for x in ("emergencia", "urgencia", "atls", "trauma")) and any(x in enun for x in ("acidente", "trauma", "instavel", "choque", "hemorrag", "fratura", "lesao"))
+    if any(x in enun for x in emerg_strong) or emerg_area:
         return "emergencia"
     if "cirurgia" in area:
         return "cirurgia"
@@ -736,10 +798,15 @@ def _mini_template_estatico(q: dict) -> dict:
             "modo_template": True,
             "tipo_template": "nao_clinico",
             "question_id": q.get("id"),
-            "schema_version": 4,
+            "schema_version": 5,
         }
     tema = str(q.get("tema") or q.get("especialidade") or "caso clínico")
     tipo = _mini_tipo_template(q)
+    qtxt_tema = _sem_acentos(" ".join(str(q.get(k) or "") for k in ("enunciado", "tema"))).lower()
+    if tipo == "ginecologia_amenorreia":
+        tema = "Amenorreia primária" if "amenorreia primaria" in qtxt_tema else ("Amenorreia secundária" if "amenorreia secundaria" in qtxt_tema else "Amenorreia")
+    elif tipo == "ginecologia" and _sem_acentos(tema).lower() in ("pediatria geral", "clinica geral", "ginecologia e obstetricia"):
+        tema = "Caso ginecológico"
     achado = str(base.get("achado_chave") or "").strip()
     correta = str(q.get("resposta_correta_texto") or "").strip()
     farm = base.get("farmacologia_conduta") if isinstance(base.get("farmacologia_conduta"), dict) else {}
@@ -764,7 +831,7 @@ def _mini_template_estatico(q: dict) -> dict:
                 "Definir previamente como reconhecer e manejar complicações imediatas.",
             ]),
             _mini_stage("tecnica", "Técnica", "Como conduzir a execução de forma segura?", [
-                f"Executar a técnica em sequência lógica, respeitando marcos anatômicos e objetivo relacionado a {tema}.",
+                "Executar a técnica em sequência lógica, respeitando marcos anatômicos e o objetivo do procedimento descrito no caso.",
                 "Manter técnica asséptica e reavaliar o paciente durante a execução quando pertinente.",
                 "Confirmar resultado/posicionamento/efetividade do procedimento conforme a técnica exigir.",
             ], ["Interromper e reavaliar se surgirem sinais de complicação."]),
@@ -792,7 +859,7 @@ def _mini_template_estatico(q: dict) -> dict:
             ]),
             _mini_stage("exame", "Exame direcionado", "O que deve ser examinado de forma prioritária?", [
                 "Reavaliar sinais vitais, estado geral e perfusão/oxigenação conforme o quadro.",
-                f"Realizar exame dirigido ao sistema relacionado a {tema} e procurar sinais de gravidade.",
+                "Realizar exame dirigido ao sistema-alvo sugerido pelos sintomas e procurar sinais de gravidade.",
                 "Repetir avaliação após intervenções para documentar resposta clínica.",
             ]),
             _mini_stage("exames", "Exames essenciais", "Como escolher exames sem atrasar o cuidado?", [
@@ -805,6 +872,80 @@ def _mini_template_estatico(q: dict) -> dict:
                 "Checar contraindicações e necessidade de encaminhamento, observação ou internação.",
                 "Planejar reavaliação objetiva após a intervenção inicial.",
             ], ["Escalonar o cuidado diante de instabilidade ou falha da resposta inicial."]),
+        ]
+    elif tipo == "ginecologia_amenorreia":
+        qtxt = _sem_acentos(" ".join(str(q.get(k) or "") for k in ("enunciado", "tema", "resposta_correta_texto"))).lower()
+        primaria = "amenorreia primaria" in qtxt or "sem menarca" in qtxt or "menarca ausente" in qtxt
+        utero_ausente = "ausencia de utero" in qtxt or "utero ausente" in qtxt
+        cario_46xx = "46xx" in qtxt or "46,xx" in qtxt
+        etapas = [
+            _mini_stage("abertura", "Enquadramento da amenorreia", "Como organizar a avaliação inicial sem presumir a causa?", [
+                ("Confirmar que se trata de amenorreia primária e revisar o estágio de desenvolvimento puberal." if primaria else "Definir se a amenorreia é primária ou secundária e caracterizar a cronologia menstrual."),
+                "Verificar presença de sinais de alarme, dor pélvica, sangramento ou repercussão sistêmica que mudem a prioridade.",
+                "Não presumir a etiologia: integrar anatomia, desenvolvimento puberal e contexto clínico antes de fechar o diagnóstico.",
+            ], ["Amenorreia é um sinal/síndrome; o roteiro deve buscar a causa antes de definir tratamento."]),
+            _mini_stage("anamnese", "Anamnese gineco-endócrina dirigida", "Quais pontos ajudam a localizar a causa da amenorreia?", [
+                "Revisar telarca, pubarca, crescimento, desenvolvimento sexual e história familiar de puberdade/menarca.",
+                "Perguntar dor pélvica cíclica, sintomas de obstrução do trato genital, galactorreia, cefaleia, alterações visuais e sinais de hiperandrogenismo.",
+                "Investigar perda/ganho ponderal, exercício intenso, transtornos alimentares, doença crônica, medicamentos e tratamentos prévios.",
+                "Abordar história sexual/reprodutiva com privacidade quando pertinente e apenas na medida necessária ao raciocínio diagnóstico.",
+            ]),
+            _mini_stage("exame", "Exame físico e desenvolvimento sexual", "O que deve ser examinado de forma direcionada?", [
+                "Avaliar estatura, proporções corporais, estado nutricional e caracteres sexuais secundários (incluindo mamas e pilificação).",
+                "Examinar sinais de hiperandrogenismo, disfunção tireoidiana ou outras pistas endócrinas quando presentes.",
+                "Avaliar genitália externa e anatomia do introito/canal vaginal quando indicado, respeitando privacidade e consentimento.",
+                ("Correlacionar a ausência de canal vaginal/útero já descrita com o desenvolvimento mamário e o cariótipo." if utero_ausente else "Correlacionar o exame genital com a presença/ausência de estruturas müllerianas nos exames de imagem."),
+            ]),
+            _mini_stage("hipoteses", "Raciocínio etiológico", "Como organizar as hipóteses sem misturar com um cenário obstétrico?", [
+                "Organizar o raciocínio por presença/ausência de útero, desenvolvimento de caracteres sexuais secundários e eixo gonadal/endócrino.",
+                ("Com útero ausente e cariótipo 46XX, priorizar anomalia mülleriana/agenesia mülleriana e diferenciar de condições com cariótipo 46XY." if utero_ausente and cario_46xx else "Manter hipóteses anatômicas, gonadais, hipotalâmico-hipofisárias e endócrinas conforme os achados."),
+                achado_txt("Usar os achados anatômicos, puberais e hormonais para hierarquizar os diagnósticos diferenciais."),
+            ]),
+            _mini_stage("exames", "Investigação dirigida", "Quais exames realmente ajudam a esclarecer a etiologia?", [
+                "Usar ultrassonografia pélvica para definir anatomia uterina/ovariana quando isso ainda não estiver estabelecido.",
+                "Direcionar FSH/LH, estradiol, prolactina, TSH e outros exames hormonais conforme o padrão clínico e os achados prévios.",
+                "Solicitar cariótipo quando a anatomia e o desenvolvimento sexual levantarem hipótese de alteração do desenvolvimento sexual.",
+                ("Diante de suspeita de agenesia mülleriana, pesquisar anomalias associadas, especialmente renais e esqueléticas, conforme protocolo clínico." if utero_ausente and cario_46xx else "Evitar painéis extensos sem hipótese; cada exame deve responder a uma pergunta diagnóstica."),
+            ]),
+            _mini_stage("conduta", "Conduta e orientação", "Como conduzir após definir a causa provável?", [
+                (f"Reconhecer o achado central esperado na questão: {correta[:260]}" if correta else "Definir conduta conforme a etiologia identificada."),
+                "Explicar diagnóstico e implicações reprodutivas/sexuais de forma adequada à idade, com abordagem centrada na paciente.",
+                "Encaminhar para ginecologia/endocrinologia genética ou equipe multidisciplinar quando a etiologia exigir acompanhamento especializado.",
+                "Manter o manejo direcionado à etiologia gineco-endócrina/anatômica identificada, sem importar condutas de outro cenário clínico.",
+            ], ["Amenorreia é um achado a ser explicado; ela não define a etiologia por si só."]),
+        ]
+    elif tipo == "ginecologia":
+        etapas = [
+            _mini_stage("abertura", "Abordagem ginecológica inicial", "Como enquadrar a queixa principal?", [
+                "Caracterizar a queixa ginecológica principal, sua cronologia e impacto clínico antes de definir a hipótese.",
+                "Avaliar estabilidade e sinais de alarme quando houver dor intensa, sangramento importante, febre ou repercussão sistêmica.",
+                achado_txt("Identificar o problema ginecológico central sem presumir um contexto obstétrico."),
+            ]),
+            _mini_stage("anamnese", "Anamnese ginecológica dirigida", "Quais dados devem ser explorados?", [
+                "Revisar padrão menstrual, data da última menstruação quando pertinente, dor, sangramento, corrimento e sintomas associados.",
+                "Perguntar antecedentes ginecológicos, cirurgias, contracepção, medicamentos, alergias e fatores de risco relevantes.",
+                "Abordar história sexual/reprodutiva com privacidade e apenas na medida necessária para o problema clínico.",
+            ]),
+            _mini_stage("exame", "Exame ginecológico direcionado", "Quais componentes são apropriados ao caso?", [
+                "Realizar exame geral e abdominal direcionado, procurando sinais sistêmicos e repercussão da queixa.",
+                "Realizar exame genital/especular/toque apenas quando indicado, seguro e relevante para a hipótese.",
+                "Correlacionar achados do exame com ciclo menstrual, anatomia pélvica e sintomas apresentados.",
+            ]),
+            _mini_stage("hipoteses", "Hipóteses e diferenciais", "Como organizar o raciocínio ginecológico?", [
+                "Definir a síndrome principal e hierarquizar causas anatômicas, funcionais, endócrinas, infecciosas e neoplásicas conforme o caso.",
+                "Manter diferenciais que mudem urgência, necessidade de imagem/exames ou tratamento.",
+                "Só considerar um roteiro obstétrico quando houver evidência explícita de gestação ou puerpério no caso.",
+            ]),
+            _mini_stage("exames", "Investigação dirigida", "Quais exames podem modificar a conduta?", [
+                "Solicitar exames laboratoriais e/ou imagem conforme a hipótese clínica, evitando painéis indiscriminados.",
+                "Usar ultrassonografia pélvica/transvaginal quando a anatomia pélvica ou uma lesão estrutural precisar ser esclarecida.",
+                "Interpretar resultados no contexto clínico e do ciclo reprodutivo, sem transformar um achado isolado em diagnóstico definitivo.",
+            ]),
+            _mini_stage("conduta", "Conduta ginecológica", "Como organizar o manejo?", [
+                (f"Reconhecer como decisão central da questão: {correta[:260]}" if correta else "Definir tratamento conforme diagnóstico, gravidade e objetivos da paciente."),
+                "Checar contraindicações, necessidade de tratamento farmacológico/procedimental e seguimento especializado.",
+                "Orientar sinais de alarme, retorno e implicações reprodutivas quando pertinentes.",
+            ]),
         ]
     elif tipo == "obstetricia":
         etapas = [
@@ -848,7 +989,7 @@ def _mini_template_estatico(q: dict) -> dict:
             ]),
             _mini_stage("exame", "Exame físico pediátrico", "Quais ações são apropriadas?", [
                 "Realizar exame geral e dirigido respeitando faixa etária e sinais de gravidade.",
-                f"Examinar o sistema relacionado a {tema} e buscar repercussões sistêmicas.",
+                "Examinar o sistema relacionado à queixa principal e buscar repercussões sistêmicas.",
                 "Reavaliar hidratação, perfusão, nível de consciência e esforço respiratório quando pertinentes.",
             ]),
             _mini_stage("exames", "Exames complementares", "Quando e por que investigar?", [
@@ -895,7 +1036,7 @@ def _mini_template_estatico(q: dict) -> dict:
         etapas = [
             _mini_stage("abertura", "Abordagem inicial", "Quais ações devem entrar na avaliação inicial?", [
                 "Confirmar estabilidade clínica e procurar sinais de gravidade antes de aprofundar a investigação.",
-                achado_txt(f"Reconhecer o problema central e priorizar a abordagem de {tema}."),
+                achado_txt("Reconhecer o problema central e priorizar a abordagem conforme gravidade e dados do caso."),
                 "Rever comorbidades, medicamentos em uso e alergias que possam modificar a conduta.",
             ]),
             _mini_stage("anamnese", "Anamnese dirigida", "Quais pontos você deve explorar na entrevista?", [
@@ -906,7 +1047,7 @@ def _mini_template_estatico(q: dict) -> dict:
             ]),
             _mini_stage("exame", "Exame físico", "Quais ações são adequadas no exame direcionado?", [
                 "Reavaliar sinais vitais e estado geral, procurando repercussão sistêmica ou instabilidade.",
-                f"Realizar exame físico dirigido ao sistema relacionado a {tema}, sem omitir sinais de gravidade.",
+                "Realizar exame físico dirigido à queixa principal, sem omitir sinais de gravidade.",
                 "Buscar achados que ajudem a diferenciar a hipótese principal de diagnósticos alternativos importantes.",
             ]),
             _mini_stage("hipoteses", "Hipóteses e diferenciais", "Como organizar as possibilidades diagnósticas?", [
@@ -940,12 +1081,25 @@ def _mini_template_estatico(q: dict) -> dict:
             "Definir seguimento e confirmar compreensão das orientações principais.",
         ]))
 
+    rotulos_titulo = {
+        "procedimento": "Procedimento clínico",
+        "emergencia": "Atendimento de urgência",
+        "obstetricia": "Caso obstétrico",
+        "ginecologia_amenorreia": tema,
+        "ginecologia": "Caso ginecológico",
+        "pediatria": "Caso pediátrico",
+        "psiquiatria": "Caso psiquiátrico",
+        "cirurgia": "Caso cirúrgico",
+        "clinico": "Caso clínico",
+    }
+    titulo_estacao = rotulos_titulo.get(tipo, "Caso clínico")
+
     return {
         "aplicavel": True,
-        "titulo": f"Miniestação: {tema}",
+        "titulo": f"Miniestação: {titulo_estacao}",
         "cenario": str(q.get("enunciado") or "")[:900],
         "tempo_sugerido_min": 4,
-        "objetivo": f"Treinar abordagem clínica estruturada e tomada de decisão em {tema}.",
+        "objetivo": "Treinar abordagem clínica estruturada e tomada de decisão usando apenas os dados e o problema central deste caso.",
         "instrucoes_candidato": "Selecione todas as ações que você realizaria em cada etapa. O modelo aparece imediatamente; a IA apenas contextualiza detalhes em segundo plano.",
         "etapas": etapas[:8],
         "fechamento": [
@@ -957,7 +1111,7 @@ def _mini_template_estatico(q: dict) -> dict:
         "modo_template": True,
         "tipo_template": tipo,
         "question_id": q.get("id"),
-        "schema_version": 4,
+        "schema_version": 5,
     }
 
 
@@ -999,6 +1153,61 @@ def _mini_patch_normalizar(item: dict, ids_validos: set[str]) -> dict | None:
     }
 
 
+
+def _mini_patch_filtrar_contexto(patch: dict | None, base: dict, q: dict) -> dict | None:
+    """Impede que o enriquecimento da IA troque o domínio clínico do template.
+
+    O caso-base é soberano. Em especial, conteúdo obstétrico exclusivo não pode
+    ser injetado em um caso ginecológico sem evidência explícita de gestação.
+    """
+    if not isinstance(patch, dict):
+        return None
+    tipo = str(base.get("tipo_template") or "")
+    qtxt = _sem_acentos(" ".join(str(q.get(k) or "") for k in ("enunciado", "tema", "resposta_correta_texto"))).lower()
+    obstetricos_fortes = (
+        "gestante", "gravida", "gestacao", "idade gestacional", "semanas de gestacao", "pre-natal", "prenatal",
+        "puerpera", "puerperio", "parturiente", "trabalho de parto", "parto vaginal", "cesarea", "cesariana",
+        "movimentos fetais", "batimentos cardiacos fetais", "bcf", "feto", "fetal", "placenta", "placenta previa",
+        "bolsa rota", "ruptura de membranas", "liquido amniotico", "cordao umbilical", "eclampsia", "pre-eclampsia",
+    )
+    fonte_obstetrica = any(x in qtxt for x in obstetricos_fortes)
+    if tipo not in ("ginecologia", "ginecologia_amenorreia") or fonte_obstetrica:
+        return patch
+
+    proibidos = list(obstetricos_fortes) + ["ameaca de aborto", "aborto em curso", "descolamento de placenta"]
+
+    def conflitante(texto):
+        t = _sem_acentos(str(texto or "")).lower()
+        return any(x in t for x in proibidos)
+
+    out = dict(patch)
+    if conflitante(out.get("titulo")):
+        out["titulo"] = ""
+    if conflitante(out.get("objetivo")):
+        out["objetivo"] = ""
+    if isinstance(out.get("fechamento"), list):
+        out["fechamento"] = [x for x in out["fechamento"] if not conflitante(x)]
+
+    etapas = []
+    for et in out.get("etapas", []) if isinstance(out.get("etapas"), list) else []:
+        if not isinstance(et, dict):
+            continue
+        novo = dict(et)
+        novo["corretas"] = [x for x in et.get("corretas", []) if not conflitante(x)] if isinstance(et.get("corretas"), list) else []
+        novo["pontos_criticos"] = [x for x in et.get("pontos_criticos", []) if not conflitante(x)] if isinstance(et.get("pontos_criticos"), list) else []
+        incs = []
+        for inc in et.get("incorretas", []) if isinstance(et.get("incorretas"), list) else []:
+            txt = inc.get("texto") if isinstance(inc, dict) else inc
+            if not conflitante(txt):
+                incs.append(inc)
+        novo["incorretas"] = incs
+        if novo["corretas"] or novo["incorretas"] or novo["pontos_criticos"]:
+            etapas.append(novo)
+    out["etapas"] = etapas
+    if not etapas and not out.get("fechamento") and not out.get("titulo") and not out.get("objetivo"):
+        return None
+    return out
+
 def _mini_merge_patch(base: dict, patch: dict) -> dict:
     out = json.loads(json.dumps(base, ensure_ascii=False))
     if patch.get("titulo"):
@@ -1035,7 +1244,7 @@ def _mini_merge_patch(base: dict, patch: dict) -> dict:
     out["fonte"] = "ia_contextual"
     out["modo_template"] = True
     out["enriquecido_ia"] = True
-    out["schema_version"] = 4
+    out["schema_version"] = 5
     return out
 
 
@@ -1055,7 +1264,7 @@ def enriquecer_mini_estacao(q: dict) -> dict:
     base = gerar_mini_estacao(q)
     ids = [str(e.get("id")) for e in base.get("etapas", []) if e.get("id")]
     etapas_desc = "\n".join(f"- {e.get('id')}: {e.get('titulo')}" for e in base.get("etapas", []))
-    prompt = MINIESTACAO_ENRIQUECER_INSTRUCOES.replace("{etapas}", etapas_desc).replace("{questao}", fmt_questao(q))
+    prompt = MINIESTACAO_ENRIQUECER_INSTRUCOES.replace("{tipo}", str(base.get("tipo_template") or "clinico")).replace("{etapas}", etapas_desc).replace("{questao}", fmt_questao(q))
     msgs = [
         {"role": "system", "content": MINIESTACAO_SISTEMA},
         {"role": "user", "content": prompt},
@@ -1073,6 +1282,7 @@ def enriquecer_mini_estacao(q: dict) -> dict:
         try:
             bruto = p.chamar(msgs, max_tokens=1800, timeout=min(12, p.timeout))
             patch = _mini_patch_normalizar(bruto, set(ids))
+            patch = _mini_patch_filtrar_contexto(patch, base, q)
             if patch:
                 out = _mini_merge_patch(base, patch)
                 out["modelo"] = p.modelo
