@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>CTi | Centro de Treinamento Intensivo – Revalida, ENAMED, CONAREM & USMLE</title>
+<meta name="description" content="CTi – Centro de Treinamento Intensivo. Questões reais, simulados estratégicos e trilhas personalizadas para os maiores exames médicos.">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+<link rel="icon" type="image/svg+xml" href="/static/img/icon.svg">
+<link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+<link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<meta name="theme-color" content="#0F172A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CTi">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="/static/app.css?v=19.1.0">
+</head>
+<body>
+<!-- ====== Ícones (traço fino, estilo da identidade) ====== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/></symbol>
+  <symbol id="i-banco" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6M9 9h2"/></symbol>
+  <symbol id="i-simulado" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-bars" viewBox="0 0 24 24"><rect x="4" y="12" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="13" rx="1"/><rect x="16" y="3" width="4" height="17" rx="1"/></symbol>
+  <symbol id="i-trilha" viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="M6 10.5V15c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5M22 8v6"/></symbol>
+  <symbol id="i-rev" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.3"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 21h4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 21c-4 0-7-2.7-7-6.5 0-3 2-5 3.5-6.5.3 2 1.3 3 2.5 3.5C11 8 12 5 14.5 3c.3 3 4.5 5.5 4.5 11.5 0 3.8-3 6.5-7 6.5z"/></symbol>
+  <symbol id="i-steth" viewBox="0 0 24 24"><path d="M5 3v6a5 5 0 0 0 10 0V3"/><path d="M4 3h2M14 3h2M10 14v2a5 5 0 0 0 10 0v-3"/><circle cx="20" cy="11" r="2"/></symbol>
+  <symbol id="i-osce" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h4M7 13h6M7 17h3"/><circle cx="17" cy="10" r="2"/><path d="M14.5 16a2.5 2.5 0 0 1 5 0"/></symbol>
+  <symbol id="i-scalpel" viewBox="0 0 24 24"><path d="M3 21 14 10l3 3L8 21z"/><path d="m14 10 5-5a2.1 2.1 0 0 1 3 3l-5 5"/></symbol>
+  <symbol id="i-baby" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3.5"/><path d="M6 21v-3a6 6 0 0 1 12 0v3M9 14l-3-2M15 14l3-2"/></symbol>
+  <symbol id="i-venus" viewBox="0 0 24 24"><circle cx="12" cy="9" r="5.5"/><path d="M12 14.5V22M8.5 18.5h7"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6z"/><path d="M12 9v6M9 12h6"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M8 3 5 6l1 4-2 3 2 3 4 1 2 4 3-1 2-4 3-2-1-4-3-1-2-4-4 1z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol>
+  <symbol id="i-cap" viewBox="0 0 24 24"><path d="M12 4 2 9l10 5 10-5z"/><path d="M6 11v5c2 2 10 2 12 0v-5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4v1a4 4 0 0 0 4 4M16 6h4v1a4 4 0 0 1-4 4M12 13v4M8 21h8M9 17h6v4H9z"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/></symbol>
+  <symbol id="i-gem" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/><path d="M14 8l4 4-4 4M18 12H9"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="5" r="1.4"/><circle cx="12" cy="5" r="1.4"/><circle cx="19" cy="5" r="1.4"/><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/><circle cx="5" cy="19" r="1.4"/><circle cx="12" cy="19" r="1.4"/><circle cx="19" cy="19" r="1.4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h12l-2 4 2 4H5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v12M6 11l6 6 6-6M4 20h16"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 20V8M6 13l6-6 6 6M4 4h16"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17v.5"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v16a2 2 0 0 0-2-2H3zM21 5a2 2 0 0 0-2-2h-5a2 2 0 0 0-2 2v16a2 2 0 0 1 2-2h7z"/></symbol>
+  <symbol id="i-img" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
+  <symbol id="i-ai" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4M9 12v1M15 12v1M9 16h6M2 12v2M22 12v2"/></symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M2 12h5l2-4 3 9 3-12 2 7h5"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12 18 7M12 3v2M21 12h-2M12 21v-2M3 12h2"/><circle cx="12" cy="12" r="1"/></symbol>
+</svg>
+
+<header class="hdr">
+  <div class="hdr-in">
+    <a class="brand" id="brandHome" title="CTi – Centro de Treinamento Intensivo">
+      <svg class="mark" viewBox="0 0 236 120" role="img" aria-label="CTi">
+        <defs>
+          <linearGradient id="lgT" x1="0" x2="1"><stop offset="0" style="stop-color:var(--logoDark)"/><stop offset=".75" stop-color="#E10613"/></linearGradient>
+          <linearGradient id="lgB" x1="0" x2="1"><stop offset=".15" stop-color="#E10613"/><stop offset="1" style="stop-color:var(--logoDark)"/></linearGradient>
+        </defs>
+        <path d="M100 10H44A44 44 0 0 0 0 54v1h26v-1a18 18 0 0 1 18-18h56z" fill="url(#lgT)"/>
+        <path d="M0 65v1a44 44 0 0 0 44 44h56V84H44a18 18 0 0 1-18-18v-1z" fill="url(#lgB)"/>
+        <path d="M6 60h36l5-10 7 24 7-34 6 26 3-6h35" fill="none" stroke="#E10613" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="M112 10h86v26h-30v74h-26V36h-30z" fill="currentColor"/>
+        <rect x="208" y="44" width="26" height="66" fill="currentColor"/>
+        <rect x="208" y="10" width="26" height="24" rx="3" fill="#E10613"/>
+      </svg>
+      <span class="wm">Centro de<br>Treinamento<br>Intensivo</span>
+    </a>
+    <nav class="tabs" id="tabs">
+      <button data-v="painel" class="on"><svg class="i"><use href="#i-home"/></svg>Início</button>
+      <button data-v="missao"><svg class="i"><use href="#i-target"/></svg>Missão Diária</button>
+      <button data-v="banco"><svg class="i"><use href="#i-banco"/></svg>Banco de Questões</button>
+      <button data-v="simulado"><svg class="i"><use href="#i-simulado"/></svg>Simulados</button>
+      <button data-v="desempenho"><svg class="i"><use href="#i-bars"/></svg>Desempenho</button>
+      <button data-v="reforco"><svg class="i"><use href="#i-trilha"/></svg>Trilhas</button>
+      <button data-v="segunda"><svg class="i"><use href="#i-steth"/></svg>2ª Fase</button>
+      <button data-v="atualizacoes"><svg class="i"><use href="#i-radar"/></svg>Atualizações</button>
+      <button data-v="erros"><svg class="i"><use href="#i-rev"/></svg>Revisões <span class="badge" id="badgeErros" hidden>0</span></button>
+      <button data-v="admin" class="admin-only" hidden><svg class="i"><use href="#i-users"/></svg>Administração</button>
+    </nav>
+    <div class="hdr-act">
+      <div class="streak" id="hdrStreak" title="Dias seguidos com a missão concluída"><svg class="i"><use href="#i-flame"/></svg><span>0</span></div>
+      <button class="icon-btn" id="btnBusca" title="Buscar no banco de questões"><svg class="i"><use href="#i-search"/></svg></button>
+      <button class="icon-btn" id="btnSino" title="Revisões pendentes"><svg class="i"><use href="#i-bell"/></svg><span class="badge" id="badgeSino" hidden>0</span></button>
+      <button class="icon-btn" id="btnTema" title="Tema claro/escuro"><svg class="i"><use href="#i-moon"/></svg></button>
+      <button class="icon-btn" id="btnLogout" title="Sair da sessão"><svg class="i"><use href="#i-logout"/></svg></button>
+      <button class="perfil" id="btnPerfil" title="Editar perfil"><span class="avatar" id="pfAvatar">Dr</span><span class="pinfo"><b id="pfNome">Doutor(a)</b><small id="pfObj">Definir objetivo</small></span></button>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+<aside class="side" id="side">
+  <button data-v="painel" class="on"><svg class="i"><use href="#i-home"/></svg>Painel</button>
+  <button data-v="missao"><svg class="i"><use href="#i-target"/></svg>Missão Diária</button>
+  <button data-v="banco"><svg class="i"><use href="#i-banco"/></svg>Banco de Questões</button>
+  <button data-v="simulado"><svg class="i"><use href="#i-simulado"/></svg>Simulados</button>
+  <button data-v="erros"><svg class="i"><use href="#i-rev"/></svg>Revisões <span class="badge" id="badgeSide" hidden>0</span></button>
+  <button data-v="desempenho"><svg class="i"><use href="#i-bars"/></svg>Desempenho</button>
+  <button data-v="reforco"><svg class="i"><use href="#i-trilha"/></svg>Trilhas de Estudo</button>
+  <button data-v="segunda"><svg class="i"><use href="#i-steth"/></svg>2ª Fase · Estações</button>
+  <button data-v="atualizacoes"><svg class="i"><use href="#i-radar"/></svg>Atualizações</button>
+  <button data-v="favoritos"><svg class="i"><use href="#i-star"/></svg>Favoritos</button>
+  <button data-v="admin" class="admin-only" hidden><svg class="i"><use href="#i-users"/></svg>Administração</button>
+  <div class="side-missao"><span>Missão de hoje</span><b id="sideMissao">0/15</b><div class="progress"><i id="sideMissaoBar" style="width:0"></i></div></div>
+</aside>
+
+<main>
+<!-- ======================= PAINEL ======================= -->
+<section class="view on" id="view-painel">
+  <div class="mob-only saud"><h2>Olá, <span id="saudNome">Doutor(a)</span> 👋</h2><p>Continue sua preparação</p></div>
+  <div class="hero-b">
+    <div class="kick">Sua evolução começa aqui</div>
+    <h1>Preparação médica<br>de <em>alto nível.</em></h1>
+    <p>Questões reais, simulados estratégicos e trilhas personalizadas para você conquistar os maiores exames médicos.</p>
+    <div class="feats">
+      <div class="feat"><svg class="i"><use href="#i-target"/></svg><div><b>Questões atualizadas</b><span>Bases oficiais</span></div></div>
+      <div class="feat"><svg class="i"><use href="#i-bars"/></svg><div><b>Desempenho completo</b><span>Evolução real</span></div></div>
+      <div class="feat"><svg class="i"><use href="#i-book"/></svg><div><b>Foco em grandes conquistas</b><span>Revalida • ENAMED • CONAREM • USMLE</span></div></div>
+    </div>
+    <button class="btn hero-cta" data-go="missao">Começar agora <svg class="i"><use href="#i-arrow"/></svg></button>
+    <div class="slogan"><div>Mais prática<br>Mais médicos<br>Mais histórias</div><div>Medicina<br>sem fronteiras</div></div>
+  </div>
+
+  <div class="mob-only">
+    <button class="cont-card" data-go="missao"><svg class="i" style="width:28px;height:28px"><use href="#i-target"/></svg><div><b>Missão Diária</b><span id="contSub">15 questões inéditas hoje</span></div><span class="go"><svg class="i"><use href="#i-arrow"/></svg></span></button>
+    <div class="quick">
+      <button data-go="simulado"><svg class="i"><use href="#i-simulado"/></svg>Simulados</button>
+      <button data-go="desempenho"><svg class="i"><use href="#i-bars"/></svg>Desempenho</button>
+      <button data-go="reforco"><svg class="i"><use href="#i-trilha"/></svg>Trilhas</button>
+      <button data-go="erros"><svg class="i"><use href="#i-rev"/></svg>Revisões</button>
+    </div>
+  </div>
+
+  <div class="pn-grid">
+    <div>
+      <div class="card">
+        <div class="sec-t"><span>Escolha seu foco</span><span>Grandes exames. Uma só plataforma.</span></div>
+        <div class="foco" id="pnFoco"></div>
+      </div>
+      <div class="modos">
+        <button class="modo red" data-go="missao"><span class="ib"><svg class="i"><use href="#i-bars"/></svg></span><div><b>Modo Treinamento</b><span>Missão diária personalizada: 15 questões inéditas por dia, com IA tutora em cada resposta.</span></div><span class="go"><svg class="i"><use href="#i-arrow"/></svg></span></button>
+        <button class="modo navy" data-go="simulado"><span class="ib"><svg class="i"><use href="#i-simulado"/></svg></span><div><b>Modo Simulado</b><span>Simulados no estilo da prova real, com cronômetro, correção e desempenho.</span></div><span class="go"><svg class="i"><use href="#i-arrow"/></svg></span></button>
+      </div>
+      <div class="card">
+        <div class="sec-t"><span>Filtros rápidos</span></div>
+        <div class="filtros">
+          <label class="f">Prova<select id="fxExame"></select></label>
+          <label class="f">Especialidade<select id="fxArea"></select></label>
+          <label class="f">Ano<select id="fxAno"></select></label>
+          <button class="btn dark" id="fxBuscar"><svg class="i"><use href="#i-search"/></svg>Buscar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="sec-t"><span>Questão em destaque</span><span class="row" style="gap:4px"><button class="fav" id="dqFav"><svg class="i"><use href="#i-star"/></svg>Favoritar</button><button class="lnk" id="dqVer"><svg class="i"><use href="#i-doc"/></svg>Ver explicação</button></span></div>
+        <div id="pnDestaque"><div class="empty small">Carregando…</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="sec-t"><span>Minha evolução</span><select id="pnPer" style="padding:5px 8px;font-size:.75rem"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="0">Todo o período</option></select></div>
+        <div id="pnEvol"></div>
+      </div>
+      <div class="card">
+        <div class="sec-t"><span>Desempenho por especialidade</span><button class="lnk" data-go="desempenho">Ver todas <svg class="i"><use href="#i-arrow"/></svg></button></div>
+        <div id="pnEsp"></div>
+      </div>
+      <div class="card">
+        <div class="sec-t"><span>Evolução no tempo</span></div>
+        <div id="pnLinha"></div>
+      </div>
+      <div class="card">
+        <div class="sec-t"><span>Metas do mês</span><button class="lnk" id="pnMetasCfg">Configurar metas <svg class="i"><use href="#i-arrow"/></svg></button></div>
+        <div class="metas" id="pnMetas"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="essencia">
+    <div class="kick"><span class="red">Nossa</span>&nbsp;essência</div>
+    <h2>Mais que uma plataforma.<br><span class="red">Um parceiro na sua jornada médica.</span></h2>
+    <p>Conteúdo de qualidade, tecnologia e propósito para formar médicos mais preparados e uma saúde melhor para todos.</p>
+  </div>
+  <div class="pilares">
+    <div class="pilar"><svg class="i"><use href="#i-gem"/></svg><div><b>Conteúdo oficial e atualizado</b><span>Questões das provas oficiais: Revalida, ENAMED, CONAREM e USMLE.</span></div></div>
+    <div class="pilar"><svg class="i"><use href="#i-bars"/></svg><div><b>Desempenho real e detalhado</b><span>Acompanhe sua evolução com métricas por área e tema.</span></div></div>
+    <div class="pilar"><svg class="i"><use href="#i-user"/></svg><div><b>Trilhas personalizadas de estudo</b><span>Estude com foco, no seu ritmo e para o seu objetivo.</span></div></div>
+    <div class="pilar"><svg class="i"><use href="#i-trophy"/></svg><div><b>Foco nos grandes exames médicos</b><span>Revalida, ENAMED, CONAREM, USMLE e mais.</span></div></div>
+  </div>
+</section>
+
+<!-- ======================= MISSÃO ======================= -->
+<section class="view" id="view-missao">
+  <div class="banner">
+    <div class="kick">Modo treinamento</div>
+    <h2>Missão de hoje · <span id="mDataHoje"></span></h2>
+    <p>15 questões inéditas por dia, sorteadas das provas oficiais. Nunca repete. Errou? Vai direto para as Revisões.</p>
+    <div class="grid g4" style="margin-top:14px">
+      <div class="kpi"><span class="small">Progresso hoje</span><b id="mProg">0/15</b></div>
+      <div class="kpi"><span class="small">Sequência</span><b id="mStreak">0 dias</b></div>
+      <div class="kpi"><span class="small">Questões inéditas restantes</span><b id="mRest">–</b></div>
+      <div class="kpi"><span class="small">Revisões de erros para hoje</span><b id="mRev">0</b></div>
+    </div>
+  </div>
+
+  <div class="card" id="mConfig">
+    <h3><svg class="i"><use href="#i-target"/></svg>Como quer treinar hoje?</h3>
+    <div class="seg" id="mModo">
+      <button data-m="equilibrada" class="on"><b><svg class="i"><use href="#i-bars"/></svg>Equilibrada</b><span class="small muted">Distribuição das provas: 4 Clínica · 3 Cirurgia · 3 Pediatria · 3 GO · 2 Preventiva</span></button>
+      <button data-m="fraquezas"><b><svg class="i"><use href="#i-target"/></svg>Foco nas fraquezas</b><span class="small muted">A IA sorteia mais questões das áreas e temas em que você mais erra</span></button>
+      <button data-m="area"><b><svg class="i"><use href="#i-steth"/></svg>Por área</b><span class="small muted">Treine só uma área (ex.: só Ginecologia) ou um tema específico</span></button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label class="f">Prova de origem<select id="mExame"></select></label>
+      <label class="f" id="mAreaWrap" hidden>Área<select id="mArea"></select></label>
+      <label class="f" id="mTemaWrap" hidden>Tema<select id="mTema"></select></label>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" id="mStart"><svg class="i"><use href="#i-play"/></svg>Iniciar missão de hoje</button>
+      <span class="small muted" id="mInfo"></span>
+    </div>
+  </div>
+
+  <div class="card" id="mDone" hidden>
+    <h3><svg class="i"><use href="#i-check"/></svg>Missão de hoje concluída!</h3>
+    <div id="mDoneResumo"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn sec" id="mRevisar"><svg class="i"><use href="#i-search"/></svg>Revisar questões de hoje</button>
+      <button class="btn" id="mExtra"><svg class="i"><use href="#i-plus"/></svg>Missão extra (+15 inéditas)</button>
+      <button class="btn dark" id="mIrErros"><svg class="i"><use href="#i-rev"/></svg>Revisar erros agendados</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= SIMULADO ======================= -->
+<section class="view" id="view-simulado">
+  <div class="banner"><div class="kick">Modo simulado</div><h2>Simulado personalizado</h2>
+    <p>Combine prova, edição, área e tema. No <b>modo treino</b> a IA comenta cada questão na hora; no <b>modo prova</b> há cronômetro e a correção (com IA) vem no final.</p></div>
+  <div class="card">
+    <div class="row">
+      <label class="f">Prova<select id="sExame"></select></label>
+      <label class="f">Edição<select id="sEdicao"></select></label>
+      <label class="f">Área<select id="sArea"></select></label>
+      <label class="f">Tema<select id="sTema"></select></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="f">Nº de questões<select id="sN"><option>10</option><option selected>20</option><option>30</option><option>50</option><option>100</option><option value="200">Todas do filtro (até 200)</option></select></label>
+      <label class="f">Modo<select id="sModo"><option value="treino">Treino (IA após cada questão)</option><option value="prova">Prova (cronômetro, correção no final)</option></select></label>
+      <label class="f">Ordem<select id="sOrdem"><option value="aleatoria">Aleatória</option><option value="prova">Ordem da prova</option></select></label>
+      <label class="f">Incluir<select id="sIncl"><option value="novas">Priorizar não respondidas</option><option value="todas">Todas</option></select></label>
+    </div>
+    <div class="row" style="margin-top:14px"><button class="btn" id="sStart"><svg class="i"><use href="#i-play"/></svg>Montar simulado</button><span class="small muted" id="sInfo"></span></div>
+  </div>
+</section>
+
+<!-- ======================= BANCO ======================= -->
+<section class="view" id="view-banco">
+  <div class="banner"><div class="kick">Bases oficiais</div><h2>Banco de Questões</h2><p id="bResumo">Revalida INEP, ENAMED, CONAREM (Paraguai) e USMLE Step 2 CK, com gabarito oficial e IA tutora.</p></div>
+  <div class="card">
+    <div class="row">
+      <label class="f">Prova<select id="bExame"></select></label>
+      <label class="f">Edição<select id="bEdicao"></select></label>
+      <label class="f">Ano<select id="bAno"></select></label>
+      <label class="f">Área<select id="bArea"></select></label>
+      <label class="f">Tema<select id="bTema"></select></label>
+      <label class="f" style="flex:2">Buscar no texto<input type="text" id="bBusca" placeholder="ex.: pré-eclâmpsia, sulfato de magnésio"></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="bBuscar"><svg class="i"><use href="#i-search"/></svg>Filtrar</button>
+      <button class="btn sec" id="bTreinar"><svg class="i"><use href="#i-play"/></svg>Treinar estas questões</button>
+      <span class="small muted" id="bInfo"></span>
+    </div>
+  </div>
+  <div id="bLista"></div>
+  <div class="row" style="justify-content:center"><button class="btn sec" id="bMais" hidden>Carregar mais</button></div>
+</section>
+
+<!-- ======================= FAVORITOS ======================= -->
+<section class="view" id="view-favoritos">
+  <div class="banner"><div class="kick">Sua seleção</div><h2>Favoritos</h2><p>Questões que você marcou com a estrela para revisar depois.</p></div>
+  <div class="card"><div class="row"><button class="btn" id="fvTreinar"><svg class="i"><use href="#i-play"/></svg>Treinar favoritos</button><span class="small muted" id="fvInfo"></span></div></div>
+  <div id="fvLista"></div>
+</section>
+
+<!-- ======================= ERROS ======================= -->
+<section class="view" id="view-erros">
+  <div class="banner"><div class="kick">Caderno de erros</div><h2>Revisões</h2>
+    <p>Cada erro entra num ciclo de revisão espaçada: <b>D+1 → D+7 → D+30</b>. Acertou nas três revisões? A questão é marcada como <b>dominada</b>. Errou de novo? Volta para D+1.</p></div>
+  <div class="card">
+    <div class="row">
+      <label class="f">Área<select id="eArea"></select></label>
+      <label class="f">Tema<select id="eTema"></select></label>
+      <label class="f">Mostrar<select id="eFiltro"><option value="hoje">Revisões para hoje</option><option value="todos">Todos os pendentes</option><option value="dominadas">Dominadas</option></select></label>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="eStart"><svg class="i"><use href="#i-rev"/></svg>Revisar selecionados</button><span class="small muted" id="eInfo"></span></div>
+  </div>
+  <div id="eLista"></div>
+</section>
+
+<!-- ======================= DESEMPENHO ======================= -->
+<section class="view" id="view-desempenho">
+  <div class="banner"><div class="kick">Evolução real</div><h2>Desempenho</h2><p>Seu aproveitamento por área, tema e período, com alertas da IA sobre onde focar.</p></div>
+  <div class="grid g4" id="dKpis"></div>
+  <div class="card" style="margin-top:16px"><h3><svg class="i"><use href="#i-alert"/></svg>Alertas da IA sobre suas áreas</h3><div id="dAlertas"></div></div>
+  <div class="grid g2">
+    <div class="card"><h3><svg class="i"><use href="#i-bars"/></svg>Acerto por área</h3><div class="chart" id="dAreas"></div></div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h3><svg class="i"><use href="#i-chart"/></svg>Evolução</h3>
+        <div class="row"><select id="dEvArea"></select><select id="dEvPer"><option value="dia">Últimos 14 dias</option><option value="semana">Últimas 8 semanas</option></select></div></div>
+      <div class="chart" id="dEvol"></div>
+    </div>
+  </div>
+  <div class="card"><h3><svg class="i"><use href="#i-cal"/></svg>Evolução semanal por área</h3><p class="small muted">Barras = % de acerto em cada uma das últimas 4 semanas (da mais antiga para a mais recente).</p><div class="chart" id="dSemArea"></div></div>
+  <div class="card"><h3><svg class="i"><use href="#i-target"/></svg>Temas: do mais fraco ao mais forte</h3><div id="dTemas"></div></div>
+  <div class="card"><h3><svg class="i"><use href="#i-doc"/></svg>Dados</h3><div class="row"><button class="btn sec sm" id="dExport"><svg class="i"><use href="#i-down"/></svg>Exportar progresso (JSON)</button><label class="btn sec sm" style="cursor:pointer"><svg class="i"><use href="#i-up"/></svg>Importar<input type="file" id="dImport" accept=".json" hidden></label><button class="btn sec sm" id="dReset" style="color:var(--bad)"><svg class="i"><use href="#i-trash"/></svg>Zerar progresso</button></div></div>
+</section>
+
+<!-- ======================= REFORÇO ======================= -->
+<section class="view" id="view-reforco">
+  <div class="banner"><div class="kick">Trilhas de estudo</div><h2>Planner e reforço de conteúdo</h2><p>Gerado a partir do seu desempenho: temas mais fracos primeiro, revisões espaçadas dos erros e simulado semanal.</p></div>
+  <div class="card">
+    <div class="planner-title-row"><h2><svg class="i"><use href="#i-cal"/></svg>Planner de estudos sugerido</h2><span class="planner-live-badge">Execução direta</span></div>
+    <p class="muted small planner-intro">Seu plano diário já vem pronto para executar. Use “Iniciar plano do dia” para seguir a sequência ou abra qualquer atividade diretamente.</p>
+    <div class="row">
+      <label class="f">Data da prova (opcional)<input type="date" id="pProva"></label>
+      <label class="f">Tempo disponível por dia<select id="pHoras"><option value="1">1 hora</option><option value="2" selected>2 horas</option><option value="3">3 horas</option><option value="4">4+ horas</option></select></label>
+      <div id="pCountdown" class="kpi" style="flex:1;min-width:160px"></div>
+    </div>
+    <div class="planner-days" id="pDias"></div>
+  </div>
+  <div class="card">
+    <h2><svg class="i"><use href="#i-book"/></svg>Reforço de conteúdo</h2>
+    <p class="muted small">Pontos high-yield, bizus e pegadinhas por tema. Temas em que você está abaixo de 60% aparecem primeiro, marcados em vermelho.</p>
+    <div class="row"><label class="f">Área<select id="rArea"></select></label><label class="f" style="flex:2">Buscar<input type="text" id="rBusca" placeholder="ex.: sepse, SUS, pré-natal"></label></div>
+  </div>
+  <div class="grid g2" id="rTemas"></div>
+</section>
+
+
+<!-- ======================= 2ª FASE ======================= -->
+<section class="view" id="view-segunda">
+  <div id="f2Lista">
+    <div class="f2-subnav"><button id="f2TabEst" class="on"><svg class="i"><use href="#i-steth"/></svg>Estações</button><button id="f2TabDocs"><svg class="i"><use href="#i-doc"/></svg>Documentos escritos</button></div>
+    <div id="f2EstacoesPane">
+    <div class="banner"><div class="kick">Revalida · 2ª etapa</div><h2>Habilidades Clínicas – estações oficiais</h2>
+      <p>As estações que já caíram, montadas a partir dos cadernos e dos <b>checklists oficiais (PEP)</b> publicados pelo INEP. Leia o caso, treine em 10 minutos e depois se avalie item por item, como o avaliador da prova.</p></div>
+    <div class="card f2-info">
+      <h2><svg class="i"><use href="#i-bulb"/></svg>Como é a 2ª fase</h2>
+      <div class="grid g4">
+        <div class="kpi"><b>10</b><span class="small muted">estações, 5 por dia, nas 5 grandes áreas</span></div>
+        <div class="kpi"><b>10 min</b><span class="small muted">por estação, com paciente simulado</span></div>
+        <div class="kpi"><b>0–10</b><span class="small muted">pontos por estação, pelo checklist PEP</span></div>
+        <div class="kpi"><b>100</b><span class="small muted">pontos no total; a nota de corte muda a cada edição</span></div>
+      </div>
+      <p class="small" style="margin:12px 0 0">Roteiro que pontua em quase toda estação: apresentar-se e acolher → anamnese dirigida → pedir o exame físico e os exames certos → verbalizar diagnóstico e conduta completa → orientar sinais de alarme e retorno. Fale em voz alta: o que não é verbalizado não é pontuado.</p>
+      <div class="row" style="margin-top:12px">
+        <a class="btn sec sm" href="https://www.mundorevalida.com.br/blog/10-estacoes-segunda-fase-revalida-por-area" target="_blank" rel="noopener"><svg class="i"><use href="#i-book"/></svg>Leia: As 10 estações da 2ª fase por área (Mundo Revalida)</a>
+        <a class="btn sec sm" href="https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/revalida/provas-e-gabaritos" target="_blank" rel="noopener"><svg class="i"><use href="#i-doc"/></svg>Provas e PEPs no site do INEP</a>
+      </div>
+    </div>
+    <div class="grid g4" id="f2Kpis"></div>
+    <div class="card">
+      <div class="row">
+        <label class="f">Área<select id="f2Area"></select></label>
+        <label class="f">Edição<select id="f2Ed"></select></label>
+        <label class="f">Situação<select id="f2Sit"><option value="">Todas</option><option value="nao">Não treinadas</option><option value="sim">Já treinadas</option><option value="fraca">Nota abaixo de 7</option></select></label>
+        <label class="f" style="flex:2">Buscar<input type="text" id="f2Busca" placeholder="ex.: dengue, trauma, pré-natal"></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="f2Aleat"><svg class="i"><use href="#i-play"/></svg>Estação aleatória</button>
+        <span class="small muted" id="f2Cont"></span>
+      </div>
+    </div>
+    <div class="grid g2" id="f2Grid"></div>
+    </div>
+    <div id="f2DocsPane" hidden>
+      <div class="banner"><div class="kick">Revalida · 2ª etapa · escrita</div><h2>Laboratório de documentos clínicos</h2><p>Treine documentos que podem aparecer na estação ou que fazem parte da prática clínica. Há modelos de referência, correção estruturada e distinção clara entre formulário oficial e modelo técnico de treinamento CTI.</p></div>
+      <div class="grid g4" id="d2Kpis"></div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0 0 4px"><svg class="i"><use href="#i-doc"/></svg>Escolha o documento</h2><p class="small muted" style="margin:0">SOAP e evolução do prontuário têm foco em continuidade assistencial: outro profissional deve entender rapidamente o estado atual, o que já foi feito, o que falta e qual é o próximo passo.</p></div><select id="d2Filtro" style="max-width:220px"><option value="">Todos</option><option value="registro">Registro clínico</option><option value="prescricao">Prescrição</option><option value="comunicacao">Comunicação/encaminhamento</option><option value="oficial">Formulários oficiais</option><option value="alta">Alta/internação</option></select></div>
+      </div>
+      <div class="doc-grid" id="d2Grid"></div>
+      <div id="d2Treino" hidden></div>
+    </div>
+  </div>
+  <div id="f2Est" hidden></div>
+</section>
+
+
+<!-- ======================= ATUALIZAÇÕES ======================= -->
+<section class="view" id="view-atualizacoes">
+  <div class="banner">
+    <div class="kick">Radar médico</div>
+    <h2>Atualizações para prova e prática</h2>
+    <p>Busca mudanças recentes em diretrizes, protocolos, PCDT, notas técnicas e informações do INEP. O CTi mostra só um resumo curto e leva você à fonte original.</p>
+  </div>
+  <div class="card">
+    <div class="row upd-controls">
+      <label class="f">Área / matéria<select id="uArea"></select></label>
+      <label class="f">Período<select id="uDias"><option value="30">Últimos 30 dias</option><option value="60">Últimos 60 dias</option><option value="90">Últimos 90 dias</option><option value="120" selected>Últimos 120 dias</option><option value="180">Últimos 180 dias</option><option value="365">Último ano</option></select></label>
+      <label class="f">Tipo de fonte<select id="uFonte"><option value="">Todas as fontes verificadas</option><option value="oficial">Somente fontes oficiais</option><option value="verificada">Fontes secundárias verificadas</option></select></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="uAtualizar"><svg class="i"><use href="#i-radar"/></svg>Atualizar agora</button>
+      <span class="small muted" id="uStatus">A busca só é feita quando você abre esta área ou toca em atualizar.</span>
+    </div>
+    <div class="upd-note" style="margin-top:12px"><b>Radar orientado à prova:</b> só entram mudanças com potencial de alterar resposta do Revalida/ENAMED, conduta, diretriz ou regra do INEP. A busca usa o <b>Gemini 2.5 Flash-Lite no tier gratuito</b> quando disponível e complementa com feeds públicos gratuitos. Notícias locais ou genéricas de saúde são descartadas. <b>Fonte oficial/primária</b> prevalece; fontes secundárias verificadas servem como alerta e devem ser confirmadas na fonte original.</div>
+  </div>
+  <div id="uLista"><div class="card empty">Abra esta área para buscar as atualizações.</div></div>
+  <div class="card" id="uCanais" hidden>
+    <div class="sec-t"><span>Canais acompanhados</span><span>atalhos para as fontes</span></div>
+    <div class="upd-channels" id="uCanaisLista"></div>
+  </div>
+</section>
+
+<!-- ======================= ADMINISTRAÇÃO ======================= -->
+<section class="view" id="view-admin">
+  <div class="card admin-head">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <div class="sec-t">Administração</div>
+        <h2><svg class="i"><use href="#i-users"/></svg>Usuários e acessos</h2>
+        <p class="muted small" style="margin:4px 0 0">Gerencie quem pode acessar o CTi e acompanhe as ações administrativas.</p>
+      </div>
+      <button class="btn sec sm" id="adminRefresh"><svg class="i"><use href="#i-rev"/></svg>Atualizar</button>
+    </div>
+  </div>
+
+  <div class="card" id="adminSetupCard">
+    <div id="adminSetup"></div>
+  </div>
+
+  <div id="adminPersistent" hidden>
+    <div class="grid g4 admin-kpis" id="adminKpis"></div>
+
+    <div class="card">
+      <div class="sec-t"><span>Novo usuário</span><span>senha mínima: 12 caracteres</span></div>
+      <form id="adminCreateForm" class="admin-create">
+        <label class="f">Usuário<input type="text" id="adminNewUsername" autocomplete="off" maxlength="50" placeholder="ex.: joao.silva" required></label>
+        <label class="f">Senha<input type="password" id="adminNewPassword" autocomplete="new-password" minlength="12" maxlength="256" placeholder="senha inicial" required></label>
+        <label class="f">Perfil<select id="adminNewRole"><option value="user">Usuário</option><option value="admin">Administrador</option></select></label>
+        <div class="row admin-create-actions">
+          <button type="button" class="btn sec" id="adminGeneratePassword"><svg class="i"><use href="#i-lock"/></svg>Gerar senha</button>
+          <button type="submit" class="btn"><svg class="i"><use href="#i-plus"/></svg>Criar usuário</button>
+        </div>
+      </form>
+      <div class="admin-generated" id="adminGenerated" hidden>
+        <span class="small muted">Senha gerada</span>
+        <code id="adminGeneratedValue"></code>
+        <button class="btn sec sm" type="button" id="adminCopyPassword">Copiar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-t"><span>Usuários</span><span id="adminUserCount"></span></div>
+      <div id="adminUsers" class="admin-users"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-t"><span>Atividade administrativa</span><span>eventos recentes</span></div>
+      <div id="adminAudit" class="admin-audit"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= QUIZ (compartilhado) ======================= -->
+<section class="view" id="view-quiz">
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><h3 id="qzTitulo" style="margin:0">Sessão</h3><span class="small muted" id="qzSub"></span></div>
+      <div class="row"><span class="pill" id="qzTimer" hidden>00:00</span><button class="btn sec sm" id="qzSair" aria-label="Voltar para a tela anterior"><svg class="i"><use href="#i-back"/></svg>Voltar</button></div>
+    </div>
+    <div class="progress" style="margin-top:10px"><i id="qzBar" style="width:0"></i></div>
+    <div class="qgrid" id="qzGrid"></div>
+  </div>
+  <div class="card" id="qzCard"></div>
+</section>
+</main>
+</div>
+
+<nav class="bnav" id="bnav" aria-label="Navegação">
+  <button data-v="painel" class="on"><svg class="i"><use href="#i-home"/></svg>Início</button>
+  <button data-v="banco"><svg class="i"><use href="#i-banco"/></svg>Questões</button>
+  <button data-v="simulado"><svg class="i"><use href="#i-simulado"/></svg>Simulados</button>
+  <button data-v="desempenho"><svg class="i"><use href="#i-bars"/></svg>Desempenho</button>
+  <button data-v="mais" id="bnMais"><svg class="i"><use href="#i-more"/></svg>Mais<span class="badge" id="badgeMais" hidden>0</span></button>
+</nav>
+<div class="sheet" id="sheet"><div>
+  <button class="it" data-go="missao"><svg class="i"><use href="#i-target"/></svg>Missão Diária</button>
+  <button class="it" data-go="erros"><svg class="i"><use href="#i-rev"/></svg>Revisões (Caderno de Erros)</button>
+  <button class="it" data-go="reforco"><svg class="i"><use href="#i-trilha"/></svg>Trilhas de Estudo</button>
+  <button class="it" data-go="segunda"><svg class="i"><use href="#i-steth"/></svg>2ª Fase · Estações</button>
+  <button class="it" data-go="atualizacoes"><svg class="i"><use href="#i-radar"/></svg>Atualizações médicas</button>
+  <button class="it" data-go="favoritos"><svg class="i"><use href="#i-star"/></svg>Favoritos</button>
+  <button class="it admin-only" data-go="admin" hidden><svg class="i"><use href="#i-users"/></svg>Administração</button>
+  <button class="it" id="shPerfil"><svg class="i"><use href="#i-user"/></svg>Meu perfil</button>
+  <button class="it" id="shTema"><svg class="i"><use href="#i-moon"/></svg>Tema claro/escuro</button>
+  <button class="it" id="shLogout"><svg class="i"><use href="#i-logout"/></svg>Sair da sessão</button>
+</div></div>
+<dialog class="admin-dialog" id="adminPwdDialog">
+  <form method="dialog" id="adminPwdForm">
+    <div class="sec-t">Redefinir senha</div>
+    <h3 id="adminPwdTitle">Nova senha</h3>
+    <label class="f">Nova senha<input type="password" id="adminPwdValue" minlength="12" maxlength="256" autocomplete="new-password" required></label>
+    <div class="row" style="justify-content:flex-end;margin-top:16px">
+      <button class="btn sec" value="cancel" type="button" id="adminPwdCancel">Cancelar</button>
+      <button class="btn" value="default" type="submit">Salvar nova senha</button>
+    </div>
+  </form>
+</dialog>
+<div class="toast" id="toast"></div>
+
+<script src="/static/app.js?v=19.1.0" defer></script>
+</body>
+</html>
