@@ -25,3 +25,6 @@ Em Trilhas de Estudo > Planner deve aparecer:
 `Treino em 1 clique · v24`
 
 O `static/app.js` contém o planner executável, `farmacologia_conduta` com classe farmacológica e a miniestação clínica contextual.
+
+## v26
+Esta versão mantém os arquivos executáveis diretamente na raiz do pacote. Sobrescreva a raiz do repositório conectado à Vercel; não crie uma subpasta `v26` dentro do projeto.

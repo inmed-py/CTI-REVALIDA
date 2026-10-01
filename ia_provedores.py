@@ -221,13 +221,72 @@ def valido(item: dict, q: dict) -> bool:
     return True
 
 
+def _extrair_json_balanceado(txt: str) -> str:
+    """Extrai o primeiro objeto/array JSON completo, ignorando chaves dentro de strings."""
+    ini = None
+    abre = None
+    fecha = None
+    profundidade = 0
+    em_string = False
+    escape = False
+    for i, ch in enumerate(txt or ""):
+        if ini is None:
+            if ch in "{[":
+                ini = i
+                abre = ch
+                fecha = "}" if ch == "{" else "]"
+                profundidade = 1
+            continue
+        if em_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                em_string = False
+            continue
+        if ch == '"':
+            em_string = True
+        elif ch == abre:
+            profundidade += 1
+        elif ch == fecha:
+            profundidade -= 1
+            if profundidade == 0:
+                return txt[ini:i + 1]
+    return (txt or "")[ini:] if ini is not None else (txt or "")
+
+
 def _parse(txt: str):
+    """Parser tolerante para respostas de LLM sem aceitar conteúdo arbitrário."""
+    import ast
     txt = re.sub(r"<think>.*?</think>", "", txt or "", flags=re.S).strip()
-    txt = re.sub(r"^```(?:json)?\s*|\s*```$", "", txt)
-    if not txt.startswith(("{", "[")):
-        m = re.search(r"\{.*\}", txt, re.S)
-        txt = m.group(0) if m else txt
-    return json.loads(txt)
+    txt = re.sub(r"^```(?:json)?\s*|\s*```$", "", txt).strip()
+    candidatos = [txt, _extrair_json_balanceado(txt)]
+    vistos = set()
+    for cand in candidatos:
+        cand = (cand or "").strip()
+        if not cand or cand in vistos:
+            continue
+        vistos.add(cand)
+        tentativas = [cand]
+        reparado = re.sub(r",\s*([}\]])", r"\1", cand)
+        if reparado != cand:
+            tentativas.append(reparado)
+        for t in tentativas:
+            try:
+                return json.loads(t)
+            except json.JSONDecodeError:
+                try:
+                    return json.loads(t, strict=False)
+                except json.JSONDecodeError:
+                    pass
+                try:
+                    v = ast.literal_eval(t)
+                    if isinstance(v, (dict, list)):
+                        return v
+                except Exception:
+                    pass
+    raise json.JSONDecodeError("Resposta da IA não contém JSON recuperável", txt or "", 0)
 
 
 def _retry_after(ex, default=45):
@@ -543,52 +602,330 @@ QUESTÃO BASE:
 _MINI_CACHE = {}
 
 
+def _boolish(v):
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    if isinstance(v, str):
+        t = _sem_acentos(v).strip().lower()
+        if t in ("true", "verdadeiro", "sim", "yes", "1", "correta", "adequada"):
+            return True
+        if t in ("false", "falso", "nao", "no", "0", "incorreta", "inadequada"):
+            return False
+    return None
+
+
+def _mini_clinica(q: dict) -> bool:
+    txt = _sem_acentos(" ".join(str(q.get(k) or "") for k in ("enunciado", "tema", "resposta_correta_texto"))).lower()
+    sinais = (
+        "paciente", "homem", "mulher", "crianca", "gestante", "anos", "apresenta", "queixa", "dor", "febre",
+        "exame fisico", "pressao", "frequencia", "saturacao", "conduta", "tratamento", "diagnostico", "sindrome",
+        "encaminhar", "internar", "prescrever", "terapia", "sangramento", "dispneia", "tosse", "vomito", "diarreia",
+    )
+    return questao_farmacologica(q) or sum(1 for x in sinais if x in txt) >= 2
+
+
+def _mini_distratores(etapa_id: str):
+    banco = {
+        "abertura": [
+            ("Definir a conduta definitiva antes de avaliar estabilidade e sinais de gravidade.", "A prioridade clínica deve ser estabelecida antes da decisão definitiva."),
+            ("Ignorar sinais vitais porque o enunciado já sugere o diagnóstico.", "Sinais vitais e gravidade podem mudar completamente a prioridade da conduta."),
+        ],
+        "anamnese": [
+            ("Limitar a entrevista à queixa principal e encerrar assim que surgir uma hipótese provável.", "A anamnese dirigida precisa buscar gravidade, diferenciais e fatores que modificam a conduta."),
+            ("Omitir medicamentos em uso e alergias por não fazerem parte do diagnóstico principal.", "Medicamentos e alergias podem alterar diagnóstico, contraindicações e tratamento."),
+        ],
+        "exame": [
+            ("Pular o exame físico e decidir apenas com os dados já fornecidos pela questão.", "Na prática clínica, o exame dirigido ajuda a confirmar gravidade e diferenciais."),
+            ("Fazer um exame indiferenciado sem priorizar o sistema e os sinais de gravidade do caso.", "O exame deve ser dirigido pela hipótese e pelo risco clínico."),
+        ],
+        "exames": [
+            ("Solicitar uma bateria extensa de exames sem relação com hipótese ou impacto na conduta.", "Exames devem responder a uma pergunta clínica e modificar decisão ou segurança."),
+            ("Adiar toda investigação mesmo quando um exame é necessário para confirmar gravidade ou orientar tratamento.", "Quando o exame muda conduta ou segurança, ele deve ser solicitado no momento adequado."),
+        ],
+        "conduta": [
+            ("Manter uma estratégia claramente ineficaz sem reavaliar diagnóstico, gravidade ou indicação terapêutica.", "Falha terapêutica exige reavaliação clínica e da estratégia escolhida."),
+            ("Escolher tratamento sem checar contraindicações, interações ou condições que exijam ajuste.", "Segurança terapêutica faz parte da conduta correta."),
+        ],
+        "prescricao": [
+            ("Fixar dose, via e duração mesmo quando faltam dados essenciais para uma prescrição segura.", "A prescrição deve respeitar idade, peso, função renal/hepática, gestação e gravidade quando pertinentes."),
+            ("Prescrever pelo nome comercial e omitir orientação de uso e monitorização.", "Para treino de prova, prefira nome genérico e inclua orientação/monitorização relevante."),
+        ],
+        "orientacoes": [
+            ("Encerrar o atendimento sem explicar sinais de alarme ou quando procurar reavaliação.", "Orientação de retorno e sinais de alarme fazem parte da segurança do paciente."),
+            ("Dar orientações genéricas sem relacioná-las ao problema clínico e ao seguimento necessário.", "Orientações devem ser específicas para o risco, tratamento e acompanhamento do caso."),
+        ],
+    }
+    return banco.get(etapa_id, banco["conduta"])
+
+
+def _mini_stage_id(valor: str, idx: int) -> str:
+    t = _sem_acentos(valor or "").lower()
+    for k, termos in {
+        "abertura": ("abertura", "inicial", "prioridade", "estabil"),
+        "anamnese": ("anamn", "historia", "entrevista", "interrog"),
+        "exame": ("exame fis", "exame clin", "avaliacao fis"),
+        "hipoteses": ("hipot", "diferencial", "diagnost"),
+        "exames": ("complement", "laborator", "imagem", "investig"),
+        "conduta": ("conduta", "manejo", "tratamento"),
+        "prescricao": ("prescri", "farmac", "medic"),
+        "orientacoes": ("orient", "seguimento", "retorno", "alta"),
+    }.items():
+        if any(x in t for x in termos):
+            return k
+    ordem = ["abertura", "anamnese", "exame", "exames", "conduta", "orientacoes"]
+    return ordem[min(idx, len(ordem) - 1)]
+
+
+def _mini_normalizar(item: dict, q: dict) -> dict | None:
+    """Aproveita respostas úteis de modelos menores em vez de reprovar por pequenas diferenças de schema."""
+    if isinstance(item, dict) and isinstance(item.get("miniestacao"), dict):
+        item = item["miniestacao"]
+    if not isinstance(item, dict):
+        return None
+
+    aplic = _boolish(item.get("aplicavel"))
+    etapas_in = item.get("etapas") if isinstance(item.get("etapas"), list) else []
+    if aplic is None:
+        aplic = bool(etapas_in)
+    if aplic is False and _mini_clinica(q) and etapas_in:
+        aplic = True
+
+    if not aplic:
+        return {
+            "aplicavel": False,
+            "titulo": str(item.get("titulo") or f"Miniestação: {q.get('tema') or 'caso clínico'}")[:140],
+            "cenario": str(item.get("cenario") or q.get("enunciado") or "")[:900],
+            "tempo_sugerido_min": 4,
+            "objetivo": str(item.get("objetivo") or "Este conteúdo não se converte com segurança em uma miniestação curta."),
+            "instrucoes_candidato": str(item.get("instrucoes_candidato") or ""),
+            "etapas": [],
+            "fechamento": [],
+            "referencia": str(item.get("referencia") or ""),
+        }
+
+    etapas = []
+    for idx, raw in enumerate(etapas_in[:7]):
+        if not isinstance(raw, dict):
+            continue
+        eid = _mini_stage_id(str(raw.get("id") or raw.get("titulo") or ""), idx)
+        titulo = str(raw.get("titulo") or eid.replace("_", " ").title()).strip()
+        pergunta = str(raw.get("pergunta") or f"Quais ações são adequadas nesta etapa de {titulo.lower()}?").strip()
+        itens = raw.get("itens_esperados") if isinstance(raw.get("itens_esperados"), list) else []
+        itens = [str(x).strip() for x in itens if _texto_ok(x, 3)][:6]
+
+        ops = []
+        for op in (raw.get("opcoes") if isinstance(raw.get("opcoes"), list) else [])[:10]:
+            if isinstance(op, str):
+                ops.append({"texto": op.strip(), "correta": None, "feedback": ""})
+                continue
+            if not isinstance(op, dict):
+                continue
+            texto = str(op.get("texto") or op.get("acao") or op.get("opcao") or "").strip()
+            if not _texto_ok(texto, 4):
+                continue
+            correta = _boolish(op.get("correta"))
+            fb = str(op.get("feedback") or op.get("justificativa") or "").strip()
+            ops.append({"texto": texto, "correta": correta, "feedback": fb})
+
+        # Se o modelo trouxe itens esperados, eles viram opções corretas quando faltaram opções estruturadas.
+        if len(ops) < 4 and itens:
+            existentes = {_sem_acentos(x["texto"]).lower() for x in ops}
+            for it in itens:
+                k = _sem_acentos(it).lower()
+                if k not in existentes:
+                    ops.append({"texto": it, "correta": True, "feedback": "Ação esperada nesta etapa do caso."})
+                    existentes.add(k)
+
+        # Tenta inferir flags ausentes comparando com itens esperados; o que não casar fica sem rótulo até receber distrator.
+        itens_norm = [_sem_acentos(x).lower() for x in itens]
+        for op in ops:
+            if op["correta"] is None:
+                txt = _sem_acentos(op["texto"]).lower()
+                op["correta"] = any((it in txt or txt in it) and min(len(it), len(txt)) >= 12 for it in itens_norm) if itens_norm else True
+            if not op["feedback"]:
+                op["feedback"] = "Ação adequada e coerente com a etapa." if op["correta"] else "Ação inadequada ou não prioritária neste momento."
+
+        # Garante ao menos 2 corretas e 1 distrator plausível.
+        corretas = sum(1 for op in ops if op["correta"])
+        if corretas < 2:
+            for it in itens:
+                if corretas >= 2:
+                    break
+                if not any(_sem_acentos(it).lower() == _sem_acentos(o["texto"]).lower() for o in ops):
+                    ops.append({"texto": it, "correta": True, "feedback": "Ação esperada nesta etapa do caso."})
+                    corretas += 1
+        if not any(not op["correta"] for op in ops):
+            for texto, fb in _mini_distratores(eid):
+                ops.append({"texto": texto, "correta": False, "feedback": fb})
+                if len(ops) >= 5:
+                    break
+        while len(ops) < 4:
+            texto, fb = _mini_distratores(eid)[len(ops) % 2]
+            ops.append({"texto": texto, "correta": False, "feedback": fb})
+
+        # Máximo de 8 mantendo mistura entre corretas e incorretas.
+        if len(ops) > 8:
+            cert = [o for o in ops if o["correta"]][:5]
+            err = [o for o in ops if not o["correta"]][:3]
+            ops = (cert + err)[:8]
+
+        if sum(1 for o in ops if o["correta"]) < 1 or not any(not o["correta"] for o in ops):
+            continue
+        pontos = raw.get("pontos_criticos") if isinstance(raw.get("pontos_criticos"), list) else []
+        etapas.append({
+            "id": eid,
+            "titulo": titulo[:100],
+            "pergunta": pergunta[:320],
+            "itens_esperados": itens or [o["texto"] for o in ops if o["correta"]][:5],
+            "opcoes": ops,
+            "pontos_criticos": [str(x).strip() for x in pontos if _texto_ok(x, 3)][:4],
+        })
+
+    if len(etapas) < 3:
+        return None
+    return {
+        "aplicavel": True,
+        "titulo": str(item.get("titulo") or f"Miniestação: {q.get('tema') or 'caso clínico'}")[:140],
+        "cenario": str(item.get("cenario") or q.get("enunciado") or "")[:900],
+        "tempo_sugerido_min": max(3, min(5, int(item.get("tempo_sugerido_min") or 4))),
+        "objetivo": str(item.get("objetivo") or f"Treinar abordagem clínica dirigida em {q.get('tema') or 'caso clínico'}")[:260],
+        "instrucoes_candidato": str(item.get("instrucoes_candidato") or "Selecione todas as ações que você realizaria em cada etapa, priorizando segurança, raciocínio e conduta.")[:500],
+        "etapas": etapas,
+        "fechamento": [str(x).strip() for x in (item.get("fechamento") or []) if _texto_ok(x, 3)][:5] if isinstance(item.get("fechamento"), list) else [],
+        "referencia": str(item.get("referencia") or "")[:300],
+    }
+
+
 def _mini_valida(item: dict) -> bool:
     if not isinstance(item, dict) or not isinstance(item.get("aplicavel"), bool):
         return False
     if item.get("aplicavel") is False:
         return True
-    if not _texto_ok(item.get("titulo", ""), 5) or not _texto_ok(item.get("instrucoes_candidato", ""), 20):
+    if not _texto_ok(item.get("titulo", ""), 3) or not _texto_ok(item.get("instrucoes_candidato", ""), 12):
         return False
     etapas = item.get("etapas")
-    if not isinstance(etapas, list) or not (4 <= len(etapas) <= 8):
+    if not isinstance(etapas, list) or not (3 <= len(etapas) <= 7):
         return False
     for et in etapas:
-        if not isinstance(et, dict):
-            return False
-        if not _texto_ok(et.get("titulo", ""), 3) or not _texto_ok(et.get("pergunta", ""), 12):
-            return False
-        itens = et.get("itens_esperados")
-        if not isinstance(itens, list) or len(itens) < 2:
-            return False
-        if not all(_texto_ok(v, 3) for v in itens):
+        if not isinstance(et, dict) or not _texto_ok(et.get("titulo", ""), 3) or not _texto_ok(et.get("pergunta", ""), 8):
             return False
         opcoes = et.get("opcoes")
-        if not isinstance(opcoes, list) or not (5 <= len(opcoes) <= 8):
+        if not isinstance(opcoes, list) or not (4 <= len(opcoes) <= 8):
             return False
-        certas = 0
-        erradas = 0
+        certas = erradas = 0
         for op in opcoes:
             if not isinstance(op, dict) or not _texto_ok(op.get("texto", ""), 4) or not isinstance(op.get("correta"), bool):
                 return False
-            if op.get("feedback") and not _texto_ok(op.get("feedback"), 3):
-                return False
             certas += 1 if op.get("correta") else 0
             erradas += 0 if op.get("correta") else 1
-        if not (2 <= certas <= 5) or erradas < 1:
-            return False
-        if not isinstance(et.get("pontos_criticos", []), list):
+        if certas < 1 or erradas < 1:
             return False
     return True
 
 
+def _mini_fallback_local(q: dict, motivo: str = "") -> dict:
+    """Fallback determinístico: usa questão + correção já disponível e nunca depende de nova chamada externa."""
+    base = salvo(q, min_schema=4) or salvo(q) or {}
+    tema = str(q.get("tema") or q.get("especialidade") or "caso clínico")
+    achado = str(base.get("achado_chave") or "").strip()
+    correta = str(q.get("resposta_correta_texto") or "").strip()
+    farm = base.get("farmacologia_conduta") if isinstance(base.get("farmacologia_conduta"), dict) else {}
+    farm_ok = bool(farm.get("aplicavel")) or questao_farmacologica(q)
+    primeira = str(farm.get("primeira_escolha") or "").strip()
+    classe = str(farm.get("classe_farmacologica") or "").strip()
+
+    def st(eid, titulo, pergunta, corretas, criticos=None):
+        ops = [{"texto": x, "correta": True, "feedback": "Ação adequada e coerente com esta etapa do caso."} for x in corretas if _texto_ok(x, 4)]
+        for texto, fb in _mini_distratores(eid):
+            ops.append({"texto": texto, "correta": False, "feedback": fb})
+        return {"id": eid, "titulo": titulo, "pergunta": pergunta, "itens_esperados": [o["texto"] for o in ops if o["correta"]], "opcoes": ops[:8], "pontos_criticos": criticos or []}
+
+    abertura = [
+        "Confirmar estabilidade clínica e procurar sinais de gravidade antes de aprofundar a investigação.",
+        f"Reconhecer o problema central e priorizar a abordagem de {tema}.",
+        "Rever comorbidades, medicamentos em uso e alergias que possam modificar a conduta.",
+    ]
+    if achado:
+        abertura[1] = f"Valorizar como achado-chave do caso: {achado[:220]}."
+
+    anamnese = [
+        "Caracterizar início, duração, evolução e fatores de piora ou melhora dos sintomas relevantes.",
+        "Investigar sintomas associados e sinais de alarme relacionados à hipótese principal e aos diferenciais.",
+        "Perguntar antecedentes, exposições/fatores de risco, tratamentos prévios e resposta obtida.",
+        "Confirmar medicamentos em uso, adesão, alergias e contraindicações relevantes.",
+    ]
+    exame = [
+        "Reavaliar sinais vitais e estado geral, procurando repercussão sistêmica ou instabilidade.",
+        f"Realizar exame físico dirigido ao sistema relacionado a {tema}, sem omitir sinais de gravidade.",
+        "Buscar achados que ajudem a diferenciar a hipótese principal de diagnósticos alternativos importantes.",
+    ]
+    investig = [
+        "Solicitar exames apenas quando responderem a uma pergunta clínica, avaliarem gravidade ou modificarem a conduta.",
+        "Interpretar os resultados em conjunto com a história e o exame físico, evitando decisões por um dado isolado.",
+        "Reconsiderar diagnósticos diferenciais quando os achados forem discordantes ou a evolução não for a esperada.",
+    ]
+    conduta = []
+    if correta:
+        conduta.append(f"Reconhecer como decisão/conduta central desta questão: {correta[:260]}")
+    if primeira:
+        rot = primeira + (f" — {classe}" if classe else "")
+        conduta.append(f"Quando indicada no contexto do caso, reconhecer a primeira escolha: {rot}.")
+    conduta += [
+        "Checar contraindicações, interações, necessidade de ajuste e condições que mudem a estratégia escolhida.",
+        "Definir reavaliação/seguimento e escalonar o cuidado se houver piora, instabilidade ou falha da estratégia inicial.",
+    ]
+
+    etapas = [
+        st("abertura", "Abordagem inicial", "Quais ações devem entrar na abordagem inicial deste caso?", abertura, ["Não perder sinais de instabilidade ou gravidade."]),
+        st("anamnese", "Anamnese dirigida", "Quais pontos você deve explorar na entrevista?", anamnese),
+        st("exame", "Exame físico", "Quais ações são adequadas no exame direcionado?", exame),
+        st("exames", "Investigação e raciocínio", "Como você organiza a investigação antes da decisão final?", investig),
+        st("conduta", "Conduta", "Quais decisões são adequadas para conduzir o caso?", conduta, ["A conduta precisa ser compatível com gravidade e segurança."]),
+    ]
+    if farm_ok:
+        presc = [
+            (f"Relacionar a primeira escolha à sua classe farmacológica: {primeira} — {classe}." if primeira and classe else "Relacionar o fármaco escolhido à sua classe farmacológica e à indicação clínica."),
+            "Antes de fixar dose, via, frequência e duração, confirmar os dados clínicos necessários para uma prescrição segura.",
+            "Orientar uso, efeitos adversos relevantes, interações e monitorização quando pertinentes.",
+        ]
+        etapas.append(st("prescricao", "Prescrição e farmacologia", "Quais ações tornam a prescrição segura e adequada?", presc, ["Não inventar dose quando faltarem dados essenciais."]))
+    else:
+        orient = [
+            "Explicar ao paciente o plano de cuidado e as medidas não farmacológicas pertinentes.",
+            "Orientar sinais de alarme e quando procurar atendimento antes do retorno programado.",
+            "Definir seguimento e confirmar compreensão das orientações principais.",
+        ]
+        etapas.append(st("orientacoes", "Orientações e seguimento", "Como você encerra o atendimento com segurança?", orient))
+
+    fechamento = [
+        f"Use o caso para treinar uma sequência clínica reproduzível: prioridade → história → exame → investigação → conduta.",
+        "A miniestação de contingência usa somente a questão e a correção já disponível; ela não substitui o módulo completo da 2ª fase.",
+    ]
+    return {
+        "aplicavel": True,
+        "titulo": f"Miniestação: {tema}",
+        "cenario": str(q.get("enunciado") or "")[:900],
+        "tempo_sugerido_min": 4,
+        "objetivo": f"Treinar abordagem clínica estruturada e tomada de decisão em {tema}.",
+        "instrucoes_candidato": "Selecione todas as ações que você realizaria em cada etapa. Pode haver mais de uma resposta adequada.",
+        "etapas": etapas[:7],
+        "fechamento": fechamento,
+        "referencia": str(base.get("referencia") or farm.get("referencia") or "")[:300],
+        "fonte": "fallback_local",
+        "modo_contingencia": True,
+        "motivo_ia": str(motivo or "")[:500],
+        "question_id": q.get("id"),
+        "schema_version": 3,
+    }
+
+
 def gerar_mini_estacao(q: dict) -> dict:
-    """Gera sob demanda uma miniestação contextual. Cache principal fica no navegador; este cache é apenas da instância."""
+    """Gera miniestação contextual com IA, reparo de schema e fallback local sempre disponível."""
     key = str(q.get("id"))
     if key in _MINI_CACHE:
         return dict(_MINI_CACHE[key])
-    if not PROVEDORES:
-        return {"fonte": "indisponivel", "motivo": "nenhuma chave de IA configurada", "question_id": q.get("id")}
 
     msgs = [
         {"role": "system", "content": MINIESTACAO_SISTEMA},
@@ -601,21 +938,20 @@ def gerar_mini_estacao(q: dict) -> dict:
             continue
         for tentativa in range(2):
             try:
-                item = p.chamar(msgs, max_tokens=4500)
-                if isinstance(item, dict) and "miniestacao" in item and isinstance(item.get("miniestacao"), dict):
-                    item = item["miniestacao"]
-                if _mini_valida(item):
+                bruto = p.chamar(msgs, max_tokens=4300)
+                item = _mini_normalizar(bruto, q)
+                if item and _mini_valida(item):
                     out = dict(item)
                     out["fonte"] = "ia"
                     out["modelo"] = p.modelo
                     out["question_id"] = q.get("id")
-                    out["schema_version"] = 2
+                    out["schema_version"] = 3
                     if out.get("aplicavel"):
                         out["tempo_sugerido_min"] = max(3, min(5, int(out.get("tempo_sugerido_min") or 4)))
                     _MINI_CACHE[key] = out
                     p.ultimo_erro = ""
                     return dict(out)
-                p.ultimo_erro = "miniestação incompleta/reprovada pela validação"
+                p.ultimo_erro = "miniestação incompleta mesmo após normalização"
                 if tentativa == 0:
                     continue
             except urllib.error.HTTPError as ex:
@@ -625,20 +961,30 @@ def gerar_mini_estacao(q: dict) -> dict:
                     p.pausado_ate = time.time() + 600
                     break
                 if ex.code == 429:
-                    p.pausado_ate = time.time() + _retry_after(ex, 90)
+                    low = body.lower().replace("_", "")
+                    pausa = 6 * 3600 if any(x in low for x in ("perday", "per day", "daily", "quota")) else _retry_after(ex, 90)
+                    p.pausado_ate = time.time() + pausa
+                    p.ultimo_erro = "cota/limite atingido"
                     break
                 if ex.code in (500, 502, 503, 504) and tentativa == 0:
-                    time.sleep(2.0)
+                    time.sleep(1.5)
                     continue
+                if ex.code in (500, 502, 503, 504):
+                    p.pausado_ate = time.time() + _retry_after(ex, 45)
                 break
             except Exception as ex:
                 p.ultimo_erro = ex.__class__.__name__
                 if tentativa == 0:
-                    time.sleep(1.0)
+                    time.sleep(0.6)
                     continue
+                p.pausado_ate = time.time() + 20
                 break
         motivos.append(f"{p.nome}: {p.ultimo_erro}")
-    return {"fonte": "indisponivel", "motivo": "; ".join(motivos), "question_id": q.get("id")}
+
+    # A miniestação nunca mais cai por indisponibilidade externa.
+    fallback = _mini_fallback_local(q, "; ".join(motivos) if motivos else "nenhum provedor disponível")
+    _MINI_CACHE[key] = fallback
+    return dict(fallback)
 
 def status() -> dict:
     agora = time.time()

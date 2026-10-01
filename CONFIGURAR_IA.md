@@ -131,3 +131,6 @@ A correção completa usa agora o schema farmacológico v4. Quando houver medica
 - `classe_farmacologica`: classe, subclasse, geração ou alvo quando isso for útil para memorização.
 
 A miniestação clínica é gerada **somente quando o aluno clicar** em “Treinar este caso como miniestação”, portanto não aumenta o consumo de IA nas questões em que o recurso não for usado. Ela utiliza os mesmos provedores configurados para a Tutoria IA e respeita o mesmo limite de requisições de `/api/ia-*`.
+
+## v26 — Continuidade da miniestação
+A miniestação não depende mais da disponibilidade perfeita de um único modelo. O CTI continua tentando os provedores configurados, normaliza respostas parcialmente estruturadas e, se todos falharem por cota, sobrecarga, JSON inválido ou indisponibilidade, gera um **modo contingência** com a própria questão e a correção já disponível. Assim o treino não é bloqueado por erro temporário de API.
