@@ -1,0 +1,521 @@
+"""
+Base de conteúdo high-yield por TEMA (usada pela IA tutora, pela aba de Reforço e pelo Planner).
+Cada tema: referência principal, pontos-chave (o que mais cai), bizus de prova e pegadinhas clássicas.
+Conteúdo de revisão – sempre confira a edição vigente das diretrizes citadas.
+"""
+
+CONTEUDO = {
+    # ------------------------------------------------------------------ CLÍNICA MÉDICA
+    "Cardiologia": {
+        "area": "Clínica Médica",
+        "referencia": "Diretrizes SBC (HAS 2020, IC 2021, SCA) · AHA/ACC",
+        "pontos": [
+            "HAS: diagnóstico com PA ≥ 140x90 mmHg em 2+ consultas ou MAPA/MRPA; alvo geral < 130x80 se alto risco.",
+            "HAS estágio 1 de baixo risco: começar por mudança de estilo de vida (dieta DASH, sal < 2 g sódio/dia, exercício); estágio 2 ou alto risco: terapia combinada (IECA/BRA + BCC ou tiazídico).",
+            "IC com FE reduzida: 4 pilares que reduzem mortalidade – IECA/BRA/ARNI, betabloqueador (carvedilol, bisoprolol, succinato de metoprolol), espironolactona e iSGLT2. Diurético só alivia congestão.",
+            "SCA com supra de ST: reperfusão – angioplastia primária em até 90–120 min ou fibrinolítico em até 30 min da chegada se angioplastia indisponível.",
+            "IAM de VD (inferior + V4R): hipotensão → volume; evitar nitrato, morfina e diuréticos.",
+            "FA: calcular CHA2DS2-VASc para anticoagulação; instável hemodinamicamente → cardioversão elétrica imediata.",
+        ],
+        "bizus": [
+            "Instável (hipotensão, rebaixamento, dor torácica isquêmica, congestão pulmonar) + taquiarritmia = choque (cardioversão elétrica).",
+            "B3 = sobrecarga de volume (IC sistólica); B4 = ventrículo rígido (HVE, isquemia).",
+        ],
+        "pegadinhas": [
+            "Nifedipino sublingual NÃO se usa em urgência hipertensiva.",
+            "Em gestante hipertensa, IECA/BRA são contraindicados.",
+        ],
+    },
+    "Pneumologia": {
+        "area": "Clínica Médica",
+        "referencia": "GOLD 2024/2025 · GINA · SBPT (TB e PAC)",
+        "pontos": [
+            "DPOC: diagnóstico obrigatório por espirometria – VEF1/CVF pós-broncodilatador < 0,70.",
+            "Exacerbação de DPOC: broncodilatador de curta ação + corticoide sistêmico (5 dias) ± antibiótico se escarro purulento; O2 alvo SatO2 88–92%.",
+            "Asma: SABA isolado não é mais recomendado como único tratamento (GINA) – preferir formoterol + corticoide inalatório conforme etapa.",
+            "PAC: CURB-65 orienta local de tratamento (0–1 ambulatorial; 2 considerar internação; ≥ 3 grave).",
+            "TB pulmonar: esquema RIPE 2 meses + RI 4 meses; teste rápido molecular (TRM-TB) é o exame inicial preferencial.",
+            "TEP: Wells baixo → D-dímero; alto → angiotomografia; instável → trombólise.",
+            "Derrame pleural parapneumônico: toracocentese diagnóstica; pH < 7,2, glicose < 60, LDH alto, Gram/cultura positivos ou pus (empiema) → drenagem torácica.",
+        ],
+        "bizus": [
+            "Hemoptise + dor pleurítica + pós-operatório/imobilização = pense em TEP.",
+            "Tabagista com dispneia progressiva e tosse crônica = espirometria antes de qualquer exame de imagem para diagnóstico de DPOC.",
+        ],
+        "pegadinhas": ["Raio-X normal não exclui TEP; gasometria normal também não."],
+    },
+    "Endocrinologia e Metabolismo": {
+        "area": "Clínica Médica",
+        "referencia": "SBD 2024 · ADA Standards of Care · SBEM",
+        "pontos": [
+            "DM: glicemia de jejum ≥ 126, HbA1c ≥ 6,5%, TOTG 2h ≥ 200 ou glicemia ao acaso ≥ 200 com sintomas.",
+            "DM2: metformina é a primeira escolha; doença cardiovascular/renal/IC → associar iSGLT2 ou agonista GLP-1 com benefício comprovado.",
+            "Indicações de insulina: sintomas catabólicos (perda de peso, poliúria), HbA1c muito elevada, cetose, gestação, LADA/DM1.",
+            "Cetoacidose: hidratação vigorosa → insulina regular IV; repor potássio antes se K < 3,3.",
+            "Hipotireoidismo primário: TSH alto + T4L baixo → levotiroxina; hipertireoidismo por Graves: TSH suprimido, T4L alto, captação difusa aumentada.",
+            "Feocromocitoma: triagem com metanefrinas plasmáticas livres ou urinárias fracionadas; alfa-bloqueio antes do betabloqueio.",
+        ],
+        "bizus": [
+            "Emagrecimento + poliúria + polidipsia em paciente magro = deficiência de insulina → insulina.",
+            "Tireoidite subaguda: tireoide dolorosa + VHS alto + captação de iodo baixa.",
+        ],
+        "pegadinhas": ["Nunca iniciar betabloqueador antes do alfa-bloqueador no feocromocitoma."],
+    },
+    "Infectologia": {
+        "area": "Clínica Médica",
+        "referencia": "Ministério da Saúde (PCDT HIV, IST, Hepatites, Arboviroses) · IDSA",
+        "pontos": [
+            "HIV: TARV para todos, independentemente do CD4; esquema inicial preferencial TDF + 3TC + DTG.",
+            "Infecção aguda pelo HIV: sorologia pode ser negativa na janela – carga viral (RNA HIV) confirma.",
+            "Sífilis: penicilina benzatina; latente tardia ou de duração ignorada = 3 doses semanais (7,2 milhões UI).",
+            "Dengue: classificar grupos A-D pelos sinais de alarme; hidratação é o tratamento; evitar AINE e AAS.",
+            "Sepse: antibiótico na 1ª hora, culturas antes se não atrasar, lactato, 30 mL/kg de cristaloide se hipotensão/lactato ≥ 4.",
+            "Profilaxias no HIV: SMX-TMP se CD4 < 200 (pneumocistose).",
+        ],
+        "bizus": [
+            "Febre + exantema + linfonodomegalia + exposição sexual recente = síndrome retroviral aguda.",
+            "Dengue com sinais de alarme (dor abdominal intensa, vômitos persistentes, sangramento de mucosa, hepatomegalia, aumento de hematócrito) → grupo C, internação.",
+        ],
+        "pegadinhas": ["Gestante com sífilis: só penicilina trata o feto; alergia → dessensibilização."],
+    },
+    "Nefrologia e Distúrbios Hidroeletrolíticos": {
+        "area": "Clínica Médica",
+        "referencia": "KDIGO · Diretrizes SBN",
+        "pontos": [
+            "Hiponatremia: primeiro passo é a osmolalidade plasmática; depois volemia e osmolalidade/sódio urinário.",
+            "SIADH: hiponatremia hipotônica euvolêmica, urina inapropriadamente concentrada (Osm U > 100) e Na urinário > 30–40.",
+            "Correção de sódio: não exceder 8–10 mEq/L em 24h (risco de mielinólise pontina); sintomas graves → NaCl 3% em bolus.",
+            "Hipercalemia com alteração no ECG: gluconato de cálcio primeiro (estabiliza membrana), depois insulina + glicose, beta-2.",
+            "Rabdomiólise: CPK muito alta, urina escura com fita positiva para sangue sem hemácias → hidratação vigorosa para evitar IRA.",
+            "Síndrome nefrótica: proteinúria > 3,5 g/dia, hipoalbuminemia, edema, dislipidemia; criança → lesão mínima, trata com corticoide.",
+        ],
+        "bizus": [
+            "Fita positiva para sangue + sedimento sem hemácias = mioglobina ou hemoglobina.",
+            "Hipercalemia: 'C BIG K' – Cálcio, Beta-2/Bicarbonato, Insulina + Glicose, Kayexalato/diálise.",
+        ],
+        "pegadinhas": ["AINE + IECA + diurético = 'triplo whammy' de lesão renal aguda."],
+    },
+    "Gastroenterologia e Hepatologia": {
+        "area": "Clínica Médica",
+        "referencia": "FBG · AASLD · Consenso de Baveno VII",
+        "pontos": [
+            "Dispepsia com sinais de alarme (idade > 40–45 no Brasil, perda de peso, anemia, disfagia, vômitos persistentes) → endoscopia digestiva alta.",
+            "HDA varicosa: ceftriaxona profilática + vasoconstritor (terlipressina/octreotida) + EDA com ligadura em até 12h.",
+            "Úlcera com sangramento ativo (Forrest Ia/Ib) ou vaso visível (IIa): terapia endoscópica combinada.",
+            "Cirrose com ascite: paracentese diagnóstica; PMN ≥ 250 = PBE → cefalosporina de 3ª geração + albumina.",
+            "Encefalopatia hepática: lactulose; buscar fator precipitante (infecção, sangramento, constipação, distúrbio eletrolítico).",
+            "H. pylori: tratar sempre que positivo; confirmar erradicação.",
+        ],
+        "bizus": ["Cirrótico com febre/dor abdominal/piora da encefalopatia = paracentese para excluir PBE."],
+        "pegadinhas": ["Em HDA varicosa não se faz transfusão liberal – alvo Hb 7–8 g/dL."],
+    },
+    "Neurologia": {
+        "area": "Clínica Médica",
+        "referencia": "AHA/ASA AVC · Academia Brasileira de Neurologia",
+        "pontos": [
+            "AVC isquêmico: TC sem contraste para excluir hemorragia; trombólise (alteplase/tenecteplase) em até 4,5h; trombectomia em oclusão de grande vaso até 24h em selecionados.",
+            "Infarto lacunar: hemiparesia motora pura, sem afasia/negligência/alteração visual – doença de pequenos vasos (HAS).",
+            "AVC em jovem sem fatores de risco + TVP → pesquisar forame oval patente (ecocardiograma com microbolhas).",
+            "Estado de mal epiléptico: benzodiazepínico → fenitoína/fosfenitoína (ou levetiracetam/valproato) → anestésicos.",
+            "Hidrocefalia de pressão normal: marcha magnética + incontinência urinária + demência; tap test.",
+            "Transtorno comportamental do sono REM é pródromo de sinucleinopatias (Parkinson, demência por corpos de Lewy).",
+        ],
+        "bizus": ["Paralisia facial periférica acomete testa; central poupa a testa."],
+        "pegadinhas": ["Não baixar PA agressivamente no AVC isquêmico (tolerar até 220x120 se não for trombolisar; 185x110 se for)."],
+    },
+    "Hematologia e Oncologia": {
+        "area": "Clínica Médica",
+        "referencia": "ABHH · NCCN · INCA",
+        "pontos": [
+            "Anemia ferropriva: ferritina baixa, VCM baixo, RDW alto; em homem ou mulher pós-menopausa investigar TGI.",
+            "Anemia megaloblástica: VCM alto; B12 → alterações neurológicas; folato → sem neuropatia.",
+            "LMC: leucocitose com todas as fases da granulopoese, basofilia, esplenomegalia, t(9;22)/BCR-ABL → inibidor de tirosina-quinase (imatinibe).",
+            "Neutropenia febril: antibiótico de amplo espectro antipseudomonas na 1ª hora.",
+            "Anemia falciforme: penicilina profilática dos 2–3 meses até 5 anos; hidroxiureia reduz crises.",
+            "Síndrome de lise tumoral: hiperuricemia, hipercalemia, hiperfosfatemia, hipocalcemia – hidratação e alopurinol/rasburicase.",
+        ],
+        "bizus": ["Agranulocitose após droga (sulfa, metimazol, clozapina, dipirona) = suspender a droga + tratar como neutropenia febril."],
+        "pegadinhas": ["Ferritina é proteína de fase aguda – pode estar 'normal' na inflamação."],
+    },
+    "Reumatologia": {
+        "area": "Clínica Médica",
+        "referencia": "SBR · ACR/EULAR",
+        "pontos": [
+            "Artrite reumatoide: poliartrite simétrica de pequenas articulações, rigidez matinal > 1h; metotrexato é a droga âncora.",
+            "Gota: cristais em agulha com birrefringência negativa; crise → AINE, colchicina ou corticoide; não iniciar/suspender alopurinol na crise se já usa.",
+            "Pseudogota: cristais romboides com birrefringência positiva (pirofosfato de cálcio).",
+            "LES: FAN positivo (sensível), anti-DNA e anti-Sm (específicos); hidroxicloroquina para todos.",
+            "Artrite séptica: monoartrite aguda febril → artrocentese imediata (leucócitos > 50.000, Gram, cultura).",
+        ],
+        "bizus": ["Monoartrite aguda = punção articular (diferencia gota, pseudogota e artrite séptica)."],
+        "pegadinhas": ["Tiazídicos aumentam ácido úrico e precipitam crise de gota."],
+    },
+    "Psiquiatria": {
+        "area": "Clínica Médica",
+        "referencia": "DSM-5-TR · ABP · Protocolos do MS (RAPS)",
+        "pontos": [
+            "Depressão maior: ISRS é primeira linha; mirtazapina se insônia/perda de apetite; bupropiona se preocupação com disfunção sexual/ganho de peso (evitar em epilepsia/bulimia).",
+            "TAG: ISRS/IRSN; buspirona é alternativa sem risco de dependência; benzodiazepínico só por curto prazo.",
+            "Lítio: janela terapêutica estreita; toxicidade (tremor grosseiro, ataxia, confusão) precipitada por AINE, IECA, tiazídico e desidratação.",
+            "Síndrome serotoninérgica: clônus, hiper-reflexia, hipertermia, agitação – suspender agentes, ciproeptadina.",
+            "Agorafobia: medo/evitação de locais onde escapar seria difícil (transporte, multidões, sair de casa).",
+            "Dependência de opioide: buprenorfina/naloxona ou metadona; overdose → naloxona.",
+        ],
+        "bizus": ["Pergunta de risco de suicídio: sempre perguntar diretamente sobre ideação – não aumenta o risco."],
+        "pegadinhas": ["Ansiolítico em idoso: evitar benzodiazepínicos (quedas, delirium)."],
+    },
+    "Dermatologia": {
+        "area": "Clínica Médica",
+        "referencia": "SBD · AAD",
+        "pontos": [
+            "Melanoma: ABCDE (assimetria, bordas, cor, diâmetro > 6 mm, evolução); biópsia excisional com margens estreitas.",
+            "Carcinoma basocelular: pápula perolada com telangiectasias, área fotoexposta; raramente metastatiza.",
+            "Queloide: ultrapassa os limites da cicatriz; 1ª linha = corticoide intralesional (triancinolona).",
+            "Dermatite de contato alérgica (hera venenosa): lesões lineares vesiculares pruriginosas após trilha na mata.",
+            "Hanseníase: lesão com alteração de sensibilidade; poliquimioterapia (rifampicina, dapsona, clofazimina).",
+        ],
+        "bizus": ["Lesão cutânea que não cicatriza há > 4 semanas = biópsia."],
+        "pegadinhas": ["Excisão isolada de queloide recidiva muito – precisa de terapia adjuvante."],
+    },
+    "Clínica Geral": {
+        "area": "Clínica Médica",
+        "referencia": "Diretrizes clínicas do MS · Sociedades de especialidades",
+        "pontos": [
+            "Leia o comando: 'inicial', 'mais adequada', 'de escolha', 'próximo passo' mudam a resposta.",
+            "Paciente instável: estabilize (ABC) antes de exames confirmatórios.",
+            "Interações medicamentosas e efeitos adversos são tema recorrente – sempre revise a lista de medicações do caso.",
+            "Idoso: polifarmácia, delirium e quedas – procure a causa reversível.",
+        ],
+        "bizus": ["A alternativa correta explica TODOS os achados do caso; distratores explicam só parte."],
+        "pegadinhas": ["Exames invasivos raramente são o primeiro passo se há opção não invasiva equivalente."],
+    },
+
+    # ------------------------------------------------------------------ PEDIATRIA
+    "Neonatologia": {
+        "area": "Pediatria",
+        "referencia": "SBP · Programa de Reanimação Neonatal · MS (Triagem Neonatal)",
+        "pontos": [
+            "Reanimação: RN que não respira ou FC < 100 após passos iniciais → VPP no 1º minuto ('minuto de ouro').",
+            "Icterícia nas primeiras 24h é sempre patológica (pensar em hemólise).",
+            "Hipotireoidismo congênito (TSH alto no teste do pezinho) → levotiroxina imediatamente, idealmente até 2 semanas de vida.",
+            "Teste do pezinho idealmente entre o 3º e o 5º dia de vida.",
+            "Sífilis congênita: tratar RN conforme VDRL e tratamento materno (penicilina cristalina/procaína).",
+        ],
+        "bizus": ["Mãe com tratamento de sífilis inadequado = RN investigado e tratado."],
+        "pegadinhas": ["Não aguardar exame confirmatório para iniciar levotiroxina no hipotireoidismo congênito."],
+    },
+    "Puericultura, Crescimento e Vacinação": {
+        "area": "Pediatria",
+        "referencia": "Caderneta da Criança (MS) · Calendário Nacional de Vacinação · SBP",
+        "pontos": [
+            "Aleitamento materno exclusivo até 6 meses; complementado até 2 anos ou mais.",
+            "Baixa estatura familiar: canal de crescimento constante, idade óssea = cronológica, velocidade normal.",
+            "Atraso constitucional: idade óssea atrasada, puberdade tardia, alvo genético normal.",
+            "Idade óssea (raio-X de mão e punho esquerdos) é o exame inicial na investigação de baixa estatura.",
+            "Telarca entre 8 e 13 anos é normal em meninas; puberdade precoce: antes de 8 (meninas) / 9 (meninos).",
+            "Prevenção de acidentes por faixa etária: lactente – quedas, asfixia, aspiração de corpo estranho.",
+        ],
+        "bizus": ["Velocidade de crescimento normal = provavelmente variante da normalidade."],
+        "pegadinhas": ["Criança com desenvolvimento puberal normal para idade não precisa de exames."],
+    },
+    "Infectologia e Respiratório Pediátrico": {
+        "area": "Pediatria",
+        "referencia": "SBP · AAP · MS",
+        "pontos": [
+            "Bronquiolite: tratamento de suporte (O2 se SatO2 < 90–92%, hidratação, aspiração nasal); sem broncodilatador/corticoide de rotina.",
+            "Crupe: dexametasona para todos; estridor em repouso → adrenalina nebulizada.",
+            "OMA: amoxicilina (alta dose se fatores de risco); observação em casos selecionados > 2 anos.",
+            "Faringite estreptocócica: penicilina benzatina ou amoxicilina 10 dias – previne febre reumática.",
+            "ITU febril em lactente: tratar e fazer USG de rins e vias urinárias; uretrocistografia se USG alterada ou recorrência.",
+            "Coqueluche: azitromicina (tratamento e quimioprofilaxia de contactantes).",
+        ],
+        "bizus": ["Tosse 'ladrante' + estridor + rouquidão = crupe viral."],
+        "pegadinhas": ["Epiglotite: não examinar orofaringe com abaixador – risco de obstrução."],
+    },
+    "Gastro, Nutrição e Hidratação Pediátrica": {
+        "area": "Pediatria",
+        "referencia": "MS (Manejo do Paciente com Diarreia) · OMS",
+        "pontos": [
+            "Plano A: sem desidratação – SRO em casa + zinco; Plano B: desidratação – TRO na unidade; Plano C: grave – hidratação venosa.",
+            "Zinco por 10–14 dias em < 5 anos com diarreia aguda.",
+            "Desnutrição grave: não corrigir tudo de uma vez – risco de síndrome de realimentação.",
+            "Diarreia com sangue em criança: pensar em Shigella (ciprofloxacino/azitromicina conforme protocolo).",
+        ],
+        "bizus": ["Sinais de desidratação grave: letargia, incapacidade de beber, olhos muito fundos, prega que volta muito lentamente."],
+        "pegadinhas": ["Antidiarreicos e antieméticos de rotina não são recomendados em crianças."],
+    },
+    "Urgências e Emergências Pediátricas": {
+        "area": "Pediatria",
+        "referencia": "PALS · SBP",
+        "pontos": [
+            "Crise convulsiva > 5 min: benzodiazepínico (midazolam IM/nasal ou diazepam retal/IV).",
+            "Asma grave na criança: O2, beta-2 inalatório repetido, corticoide sistêmico precoce, sulfato de magnésio se refratária.",
+            "Choque séptico pediátrico: bolus de 10–20 mL/kg com reavaliação; antibiótico na 1ª hora.",
+            "Maus-tratos: lesões incompatíveis com a história/desenvolvimento → notificação ao Conselho Tutelar.",
+        ],
+        "bizus": ["História que não bate com a lesão = pense em maus-tratos."],
+        "pegadinhas": ["Notificar suspeita de maus-tratos é obrigatório – não precisa de confirmação."],
+    },
+    "Pediatria Geral": {
+        "area": "Pediatria",
+        "referencia": "SBP · AAP · MS",
+        "pontos": [
+            "Doses em pediatria são por peso – confira sempre mg/kg.",
+            "Sinais de perigo (AIDPI): não consegue beber/mamar, vomita tudo, convulsões, letargia.",
+            "Síndrome nefrótica na infância: lesão mínima, corticoide empírico sem biópsia inicial.",
+            "Adolescente: sigilo garantido, exceto risco à vida (dele ou de terceiros).",
+        ],
+        "bizus": ["Na pediatria, pense em faixa etária: a mesma queixa tem causas diferentes em lactente, pré-escolar e adolescente."],
+        "pegadinhas": ["Comportamentos de independência na adolescência costumam ser desenvolvimento normal."],
+    },
+
+    # ------------------------------------------------------------------ GO
+    "Obstetrícia – Pré-natal e Intercorrências": {
+        "area": "Ginecologia e Obstetrícia",
+        "referencia": "MS (Gestação de Alto Risco, Pré-natal) · FEBRASGO · ACOG",
+        "pontos": [
+            "Pré-eclâmpsia: PA ≥ 140x90 após 20 semanas + proteinúria ou lesão de órgão-alvo; sinais de gravidade → sulfato de magnésio.",
+            "Anti-hipertensivos na gestação: metildopa, nifedipino, hidralazina; nunca IECA/BRA.",
+            "Placenta prévia: sangramento vermelho-vivo, indolor, útero relaxado – NÃO fazer toque; USG.",
+            "Descolamento prematuro de placenta: dor, hipertonia, sangramento escuro, sofrimento fetal.",
+            "Gestante Rh negativo não sensibilizada (Coombs indireto negativo): imunoglobulina anti-D com 28 semanas e até 72h pós-parto se RN Rh+.",
+            "DMG: glicemia de jejum no 1º trimestre (≥ 92 mg/dL = DMG; ≥ 126 = DM prévio); TOTG 75 g entre 24–28 semanas.",
+        ],
+        "bizus": ["Sangramento indolor no 3º trimestre = placenta prévia até prova em contrário → USG antes do toque."],
+        "pegadinhas": ["Sulfato de magnésio: toxicidade → reflexo patelar abolido, FR < 12 → gluconato de cálcio."],
+    },
+    "Mastologia": {
+        "area": "Ginecologia e Obstetrícia",
+        "referencia": "INCA · FEBRASGO · SBM",
+        "pontos": [
+            "Rastreamento pelo MS: mamografia bienal dos 50 aos 69 anos (sociedades recomendam a partir dos 40).",
+            "BI-RADS 3: controle em 6 meses; BI-RADS 4 e 5: biópsia.",
+            "Microcalcificações pleomórficas agrupadas: suspeita de carcinoma ductal in situ.",
+            "Mastite lactacional: antibiótico anti-estafilocócico (cefalexina/dicloxacilina) + manter amamentação.",
+            "Abscesso mamário: drenagem (punção guiada ou cirúrgica) + antibiótico.",
+        ],
+        "bizus": ["Mastite puerperal: nunca suspender a amamentação – esvaziar a mama faz parte do tratamento."],
+        "pegadinhas": ["Nódulo palpável em mulher jovem: USG é o exame inicial (mama densa)."],
+    },
+    "Oncoginecologia e Rastreamento": {
+        "area": "Ginecologia e Obstetrícia",
+        "referencia": "INCA (Diretrizes de Rastreamento do Câncer do Colo do Útero) · FEBRASGO",
+        "pontos": [
+            "Rastreamento do colo pelo MS: citologia dos 25 aos 64 anos, a cada 3 anos após 2 exames anuais normais (transição para DNA-HPV em curso).",
+            "ASC-US em ≥ 25 anos: repetir citologia em 6 meses; LSIL: repetir em 6 meses; HSIL: colposcopia.",
+            "Sangramento pós-menopausa: USG transvaginal (endométrio > 4 mm) → biópsia de endométrio.",
+            "Lesão vulvar em idosa (prurido crônico, úlcera, líquen): biópsia.",
+            "Vacina HPV no SUS: meninas e meninos de 9 a 14 anos.",
+        ],
+        "bizus": ["Lesão suspeita visível = biópsia; citologia é para rastreio, não para diagnóstico."],
+        "pegadinhas": ["Não se rastreia colo em mulher que nunca teve relação sexual."],
+    },
+    "Ginecologia Endócrina e Reprodutiva": {
+        "area": "Ginecologia e Obstetrícia",
+        "referencia": "FEBRASGO · Critérios de Rotterdam · OMS (Critérios de Elegibilidade)",
+        "pontos": [
+            "Amenorreia: sempre excluir gravidez (beta-hCG) primeiro.",
+            "SOP (Rotterdam): 2 de 3 – oligo/anovulação, hiperandrogenismo, ovários policísticos à USG.",
+            "Infertilidade: investigar após 12 meses (ou 6 meses se ≥ 35 anos); espermograma sempre no parceiro.",
+            "Transição menopausal: FSH elevado; terapia hormonal é o tratamento mais eficaz dos fogachos, sem contraindicações.",
+            "Contracepção: estrogênio contraindicado em enxaqueca com aura, tabagista ≥ 35 anos, TEV, puerpério precoce.",
+            "Indução de ovulação e reprodução assistida aumentam gestação múltipla e prematuridade.",
+        ],
+        "bizus": ["Mulher em idade fértil com qualquer queixa ginecológica: pense em gravidez primeiro."],
+        "pegadinhas": ["Cisto funcional roto em paciente estável: conduta expectante."],
+    },
+    "Infecções Genitais e ISTs": {
+        "area": "Ginecologia e Obstetrícia",
+        "referencia": "PCDT IST – Ministério da Saúde",
+        "pontos": [
+            "Vaginose bacteriana: odor de peixe, pH > 4,5, clue cells – metronidazol.",
+            "Candidíase: prurido, corrimento grumoso, pH < 4,5 – fluconazol ou azólico tópico.",
+            "Tricomoníase: corrimento amarelo-esverdeado bolhoso, colo em framboesa – metronidazol para o casal.",
+            "Cervicite: ceftriaxona 500 mg IM + azitromicina 1 g VO (gonococo + clamídia).",
+            "DIP: tratamento ambulatorial com ceftriaxona + doxiciclina + metronidazol; internar se grave, abscesso, gestante ou falha.",
+        ],
+        "bizus": ["IST confirmada = oferecer testagem para HIV, sífilis e hepatites e tratar parcerias."],
+        "pegadinhas": ["Antes de AMIU/inserção de DIU, triar infecção cervical ativa."],
+    },
+    "Ginecologia Geral": {
+        "area": "Ginecologia e Obstetrícia",
+        "referencia": "FEBRASGO · MS",
+        "pontos": [
+            "Dor pélvica aguda em mulher fértil: beta-hCG + USG transvaginal.",
+            "Gravidez ectópica estável, pequena, beta-hCG baixo: metotrexato; instável: cirurgia.",
+            "Sangramento uterino anormal: PALM-COEIN para classificar causas.",
+        ],
+        "bizus": ["Instabilidade hemodinâmica na ginecologia = cirurgia."],
+        "pegadinhas": ["Nunca prescrever misoprostol/metotrexato sem excluir gestação tópica viável desejada."],
+    },
+
+    # ------------------------------------------------------------------ PREVENTIVA
+    "SUS, Políticas e Atenção Primária": {
+        "area": "Medicina Preventiva e Coletiva",
+        "referencia": "Lei 8.080/1990 · Lei 8.142/1990 · PNAB 2017",
+        "pontos": [
+            "Princípios doutrinários: universalidade, integralidade, equidade.",
+            "Organizativos: descentralização, regionalização, hierarquização e participação social.",
+            "Conselhos e conferências de saúde: paridade – 50% usuários, 25% trabalhadores, 25% gestores/prestadores.",
+            "Atributos da APS (Starfield): primeiro contato, longitudinalidade, integralidade, coordenação; derivados: orientação familiar e comunitária, competência cultural.",
+            "Prevenção quaternária: evitar intervenções desnecessárias/iatrogenia.",
+        ],
+        "bizus": ["'Tratar desigualmente os desiguais' = equidade."],
+        "pegadinhas": ["Participação da comunidade está na Lei 8.142, não na 8.080 (que foi vetada nessa parte)."],
+    },
+    "Epidemiologia e Bioestatística": {
+        "area": "Medicina Preventiva e Coletiva",
+        "referencia": "Epidemiologia clínica (Fletcher) · Medronho",
+        "pontos": [
+            "Sensibilidade = VP/(VP+FN) – bom para rastreio (exclui quando negativo, SnNout); Especificidade = VN/(VN+FP) – confirma quando positivo (SpPin).",
+            "Valores preditivos dependem da prevalência: prevalência ↑ → VPP ↑ e VPN ↓.",
+            "RAR = risco controle − risco tratado; NNT = 1/RAR; RRR = RAR / risco controle.",
+            "Coorte → incidência e risco relativo; caso-controle → odds ratio (doenças raras); transversal → prevalência.",
+            "Confundimento: variável associada à exposição e ao desfecho; controla-se com randomização, pareamento, estratificação ou análise multivariada.",
+            "Extrapolar resultados para população diferente da estudada compromete a validade externa.",
+        ],
+        "bizus": ["Faça sempre a tabela 2x2 antes de calcular qualquer coisa."],
+        "pegadinhas": ["Redução absoluta ≠ redução relativa – veja qual a questão pede."],
+    },
+    "Vigilância em Saúde e Notificação": {
+        "area": "Medicina Preventiva e Coletiva",
+        "referencia": "Portaria de Consolidação nº 4/2017 (Lista de Notificação Compulsória) · Guia de Vigilância em Saúde",
+        "pontos": [
+            "Notificação imediata (até 24h): ex. sarampo, raiva humana, febre amarela, cólera, botulismo, doença de Chagas aguda, óbito por dengue, antraz.",
+            "Notificação semanal: ex. hanseníase, tuberculose, sífilis, HIV/AIDS, hepatites virais.",
+            "Suspeita já é suficiente para notificar – não aguardar confirmação.",
+            "Violência contra criança, idoso e mulher: notificação compulsória.",
+            "Surto de doença transmitida por alimento: notificação imediata do surto.",
+        ],
+        "bizus": ["Doença rara/grave/com potencial de disseminação rápida = notificação imediata."],
+        "pegadinhas": ["Diarreia aguda isolada é vigiada por monitorização (MDDA), não notificação individual."],
+    },
+    "Ética Médica, Bioética e Segurança do Paciente": {
+        "area": "Medicina Preventiva e Coletiva",
+        "referencia": "Código de Ética Médica (Res. CFM 2.217/2018) · Estatuto da Pessoa Idosa · ECA",
+        "pontos": [
+            "Paciente capaz tem direito de recusar tratamento (autonomia), mesmo contra a vontade da família.",
+            "Diretivas antecipadas de vontade prevalecem sobre desejos de familiares.",
+            "Consentimento informado deve ser obtido com o paciente lúcido, antes da sedação; sem ele, cirurgia eletiva não prossegue.",
+            "Sigilo pode ser quebrado por justa causa, dever legal ou autorização do paciente.",
+            "Colega incapacitado (ex. alcoolizado) atendendo: afastá-lo da assistência e comunicar à chefia – proteger pacientes.",
+            "Segurança do paciente: análise de causa-raiz, comunicação estruturada (huddles, SBAR), lembretes eletrônicos baseados no diagnóstico.",
+        ],
+        "bizus": ["Paciente capaz + informado = a decisão é dele."],
+        "pegadinhas": ["Fechamento prematuro = viés cognitivo de aceitar o primeiro diagnóstico sem verificar."],
+    },
+    "Saúde do Trabalhador": {
+        "area": "Medicina Preventiva e Coletiva",
+        "referencia": "Lei 8.213/1991 · RENAST · NR-7",
+        "pontos": [
+            "CAT (Comunicação de Acidente de Trabalho) deve ser emitida até o 1º dia útil após o acidente; qualquer pessoa pode emitir se a empresa não o fizer.",
+            "Acidente de trajeto é equiparado a acidente de trabalho.",
+            "PAIR: perda auditiva bilateral, simétrica, com entalhe em 4–6 kHz.",
+            "Acidente com material biológico: avaliar fonte e profilaxia pós-exposição ao HIV em até 72h (ideal < 2h).",
+        ],
+        "bizus": ["Doença ocupacional confirmada ou suspeita = notificar (SINAN) e emitir CAT."],
+        "pegadinhas": ["O médico pode emitir CAT mesmo sem autorização da empresa."],
+    },
+    "Saúde Coletiva – Geral": {
+        "area": "Medicina Preventiva e Coletiva",
+        "referencia": "MS · OPAS",
+        "pontos": [
+            "Rastreamento só se justifica se a doença é relevante, tem fase pré-clínica detectável e tratamento precoce que muda desfecho.",
+            "Níveis de prevenção: primária (evitar doença), secundária (diagnóstico precoce), terciária (reabilitação), quaternária (evitar iatrogenia).",
+            "Maus-tratos ao idoso: notificação compulsória e acionamento da rede de proteção.",
+        ],
+        "bizus": ["Na dúvida entre condutas, a da Atenção Primária costuma ser coordenar o cuidado, não encaminhar tudo."],
+        "pegadinhas": ["Rastreamento de câncer de próstata não é recomendado pelo MS para a população geral."],
+    },
+
+    # ------------------------------------------------------------------ CIRURGIA
+    "Trauma (ATLS)": {
+        "area": "Cirurgia Geral",
+        "referencia": "ATLS 10ª edição",
+        "pontos": [
+            "Sequência xABCDE: controle de hemorragia exsanguinante → via aérea com proteção cervical → respiração → circulação → neurológico → exposição.",
+            "Pneumotórax hipertensivo: diagnóstico clínico → descompressão imediata (5º EIC, linha axilar média em adultos) seguida de drenagem.",
+            "Hemotórax maciço (> 1.500 mL ou > 200 mL/h por 2–4h): drenagem torácica e toracotomia.",
+            "Tamponamento: tríade de Beck; FAST confirma; pericardiocentese/janela pericárdica como ponte à toracotomia.",
+            "Paciente instável com FAST positivo → laparotomia; estável → TC com contraste.",
+            "Fratura exposta: antibiótico precoce, profilaxia antitetânica, desbridamento e irrigação no centro cirúrgico.",
+        ],
+        "bizus": ["Trauma + instabilidade = não vai para a TC."],
+        "pegadinhas": ["Regras de Ottawa: sem dor óssea nos pontos-chave e deambula → não precisa de raio-X."],
+    },
+    "Abdome Agudo e Cirurgia do Aparelho Digestivo": {
+        "area": "Cirurgia Geral",
+        "referencia": "Diretrizes WSES · Tokyo Guidelines · CBC",
+        "pontos": [
+            "Apendicite: dor periumbilical que migra para FID, anorexia, febre; Alvarado alto → cirurgia; dúvida → TC (adulto) ou USG (criança/gestante).",
+            "Colecistite aguda: Murphy positivo, USG; colecistectomia precoce (até 72h–7 dias).",
+            "Colangite: tríade de Charcot (febre, icterícia, dor) / pêntade de Reynolds → antibiótico + drenagem biliar (CPRE).",
+            "Pancreatite: 2 de 3 – dor típica, lipase/amilase > 3x, imagem; tratamento: hidratação, analgesia, dieta precoce.",
+            "Obstrução intestinal: dor em cólica, distensão, vômitos, parada de eliminação; sinais de sofrimento → cirurgia.",
+            "Divertículo de Zenker: disfagia orofaríngea, regurgitação de alimento não digerido, halitose – esofagograma.",
+        ],
+        "bizus": ["Peritonite difusa ou pneumoperitônio = cirurgia."],
+        "pegadinhas": ["Analgesia não mascara o diagnóstico de abdome agudo – deve ser feita."],
+    },
+    "Coloproctologia e Oncologia Cirúrgica": {
+        "area": "Cirurgia Geral",
+        "referencia": "INCA · SBCP",
+        "pontos": [
+            "Alteração do hábito intestinal + sangramento/anemia em > 45–50 anos → colonoscopia com biópsia.",
+            "Rastreamento de câncer colorretal: 45/50–75 anos (sangue oculto anual ou colonoscopia a cada 10 anos).",
+            "Hemorragia digestiva baixa volumosa e indolor no idoso: doença diverticular (principal) e angiodisplasia.",
+            "Fissura anal: dor intensa à evacuação e sangue vivo; tratamento clínico (fibras, banho de assento, relaxantes esfincterianos).",
+        ],
+        "bizus": ["Suspeita de neoplasia de cólon = colonoscopia com biópsia (diagnóstico histológico)."],
+        "pegadinhas": ["Enema baritado não substitui a colonoscopia no diagnóstico."],
+    },
+    "Urologia e Cirurgia Vascular": {
+        "area": "Cirurgia Geral",
+        "referencia": "SBU · SBACV · ESVS",
+        "pontos": [
+            "Torção testicular: dor súbita, testículo horizontalizado, reflexo cremastérico ausente → exploração cirúrgica imediata (não atrasar por USG).",
+            "Cólica renal: analgesia (AINE); cálculos < 5 mm costumam eliminar espontaneamente; febre + obstrução = desobstrução urgente.",
+            "AAA roto: dor abdominal/lombar + hipotensão + massa pulsátil → centro cirúrgico direto.",
+            "Isquemia arterial aguda: 6 Ps (dor, palidez, ausência de pulso, parestesia, paralisia, poiquilotermia) → heparina + revascularização.",
+            "Rastreamento de AAA: USG em homens 65–75 anos que já fumaram.",
+        ],
+        "bizus": ["Na suspeita de torção testicular, tempo é testículo – cirurgia em até 6h."],
+        "pegadinhas": ["Paciente instável com AAA roto não faz TC."],
+    },
+    "Ortopedia e Pós-operatório": {
+        "area": "Cirurgia Geral",
+        "referencia": "SBOT · ATLS · ERAS",
+        "pontos": [
+            "Febre pós-operatória: 1–2 dias atelectasia/resposta inflamatória; 3–5 dias infecção urinária/pneumonia; 5–7 dias infecção de ferida; > 7 dias abscesso/TVP.",
+            "Oligúria pós-operatória: primeiro checar sonda e retenção (USG vesical), depois volemia.",
+            "Estenose do canal lombar: claudicação neurogênica que melhora ao flexionar o tronco/sentar ('sinal do carrinho de supermercado').",
+            "Osgood-Schlatter: dor na tuberosidade anterior da tíbia em adolescente atleta.",
+        ],
+        "bizus": ["Débito urinário zero de repente = problema mecânico (sonda/obstrução) até prova em contrário."],
+        "pegadinhas": ["Claudicação vascular melhora ao parar em pé; a neurogênica exige sentar/flexionar."],
+    },
+    "Cirurgia Geral – Princípios": {
+        "area": "Cirurgia Geral",
+        "referencia": "CBC · ATLS",
+        "pontos": [
+            "Risco cirúrgico: avaliar capacidade funcional (METs) e escores (Lee/RCRI).",
+            "Profilaxia antibiótica: dose até 60 min antes da incisão (cefazolina na maioria).",
+            "Profilaxia de TEV conforme escore de Caprini.",
+        ],
+        "bizus": ["Cirurgia eletiva sem consentimento válido não prossegue."],
+        "pegadinhas": ["Antibiótico profilático não deve passar de 24h na maioria das cirurgias."],
+    },
+}
+
+# Mapeia cada tema a um bloco curto de estratégia de estudo (usado no planner)
+ESTRATEGIA_POR_AREA = {
+    "Clínica Médica": "Revise pelos 4 pilares: diagnóstico → estratificação de gravidade → 1ª linha de tratamento → contraindicações. Faça tabelas comparativas de fármacos.",
+    "Pediatria": "Estude por faixa etária e pelos protocolos do MS (AIDPI, calendário vacinal, diarreia). Decore doses em mg/kg das drogas mais cobradas.",
+    "Ginecologia e Obstetrícia": "Foque nos manuais do MS (pré-natal, alto risco, rastreamento INCA). Monte fluxogramas: sangramento, hipertensão, rastreio do colo.",
+    "Medicina Preventiva e Coletiva": "Leis 8.080/8.142 e PNAB lidas no original + tabela 2x2 praticada diariamente. Questões de ética: autonomia do paciente capaz vence.",
+    "Cirurgia Geral": "ATLS é a base: xABCDE, choque e tórax. Abdome agudo por síndrome (inflamatória, obstrutiva, perfurativa, hemorrágica, vascular).",
+}
+
+
+def conteudo_do_tema(tema: str) -> dict:
+    return CONTEUDO.get(tema) or CONTEUDO["Clínica Geral"]
