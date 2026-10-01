@@ -22,6 +22,6 @@ Estrutura esperada na raiz:
 
 ## Verificação após deploy
 Em Trilhas de Estudo > Planner deve aparecer:
-`Treino em 1 clique · v23`
+`Treino em 1 clique · v24`
 
-O `static/app.js` contém o planner executável e o módulo `farmacologia_conduta`.
+O `static/app.js` contém o planner executável, `farmacologia_conduta` com classe farmacológica e a miniestação clínica contextual.

@@ -122,3 +122,12 @@ A v22 corrige dois pontos da v20/v21:
 2. O cache da correção completa foi elevado para `schema_version=3` e o navegador usa `cti_ia_cache_v22`. Assim, comentários v20/v21 não impedem a regeneração do novo bloco.
 
 O quadro também passou para o topo da correção, logo após o raciocínio principal e antes da análise alternativa por alternativa.
+
+## v24 — Classe farmacológica e miniestação clínica
+
+A correção completa usa agora o schema farmacológico v4. Quando houver medicamento, a IA deve separar explicitamente:
+
+- `primeira_escolha`: fármaco/conduta;
+- `classe_farmacologica`: classe, subclasse, geração ou alvo quando isso for útil para memorização.
+
+A miniestação clínica é gerada **somente quando o aluno clicar** em “Treinar este caso como miniestação”, portanto não aumenta o consumo de IA nas questões em que o recurso não for usado. Ela utiliza os mesmos provedores configurados para a Tutoria IA e respeita o mesmo limite de requisições de `/api/ia-*`.

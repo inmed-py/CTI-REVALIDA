@@ -59,7 +59,8 @@ O objeto deve ter:
    "aplicavel": true/false,
    "resumo_essencial": "1 frase com a conduta terapêutica mais útil para prova; vazio se não aplicável",
    "objetivo_terapeutico": "objetivo clínico do tratamento",
-   "primeira_escolha": "fármaco/classe/conduta de primeira escolha; use nome genérico",
+   "primeira_escolha": "fármaco ou conduta de primeira escolha; use nome genérico quando for medicamento",
+   "classe_farmacologica": "classe farmacológica da primeira escolha; inclua subclasse/geração/alvo quando isso ajudar a memorizar (ex.: imatinibe = inibidor de tirosina quinase BCR::ABL1; ceftriaxona = cefalosporina de 3ª geração); vazio se a primeira escolha não for fármaco",
    "dose": "dose somente quando definida com segurança pelo contexto; caso contrário, explique a limitação",
    "via": "via de administração; vazio se não pertinente",
    "frequencia": "intervalo/frequência; vazio se não pertinente",
@@ -100,6 +101,7 @@ Regras do módulo Farmacologia & Conduta:
 - Inclua medidas não farmacológicas quando elas forem parte real do manejo (alimentação, atividade física, cessação do tabagismo, educação, prevenção, seguimento etc.).
 - Em urgência/emergência, priorize estabilização e sequência de conduta antes de detalhar farmacologia de manutenção.
 - Use nomes genéricos; não use marcas comerciais.
+- Sempre que primeira_escolha contiver um medicamento, preencha classe_farmacologica de forma explícita e útil para associação (classe + subclasse/geração/alvo quando pertinente). Não use rótulos vagos se houver uma classe mais específica conhecida.
 - prescricao_pratica é um EXEMPLO EDUCACIONAL para treino de prova/2ª fase. Só preencha quando o enunciado permitir uma prescrição coerente. Não personalize para um paciente real fora dos dados fornecidos.
 - Mantenha o módulo conciso: essencial para prova primeiro; aprofundamento apenas com informações que realmente mudam conduta ou são cobradas.
 - Nunca invente referência. Se não tiver certeza do documento/fonte exata, deixe referencia vazia.
@@ -187,9 +189,11 @@ def valido(item: dict, q: dict) -> bool:
         return False
     if len(item.get("foco") or []) < 2:
         return False
-    # Schema v20: toda resposta nova declara se o módulo Farmacologia & Conduta se aplica.
+    # Schema v24: toda resposta nova declara se o módulo Farmacologia & Conduta se aplica e traz campo de classe farmacológica.
     farm = item.get("farmacologia_conduta")
     if not isinstance(farm, dict) or not isinstance(farm.get("aplicavel"), bool):
+        return False
+    if "classe_farmacologica" not in farm or not isinstance(farm.get("classe_farmacologica"), str):
         return False
     # v22: se o enunciado/alternativas contêm tratamento ou fármacos claros,
     # não aceitamos uma resposta que silencie o módulo farmacológico.
@@ -356,9 +360,8 @@ CACHE = _carregar(CACHE_PATH)
 def salvo(q: dict, min_schema: int = 0):
     """Retorna comentário em cache.
 
-    min_schema=3 força a estrutura v22 com detecção semântica de Farmacologia & Conduta. Isso evita que
-    comentários antigos impeçam a geração do novo módulo, sem inutilizar o cache
-    legado para a dica sem spoiler.
+    min_schema=4 força a estrutura v24 com classe farmacológica explícita em Farmacologia & Conduta.
+    Isso evita que comentários antigos impeçam a geração do campo novo, sem inutilizar o cache legado para a dica sem spoiler.
     """
     for k in (str(q["id"]), str(q.get("duplicata_de") or "")):
         if not k:
@@ -366,7 +369,15 @@ def salvo(q: dict, min_schema: int = 0):
         item = CACHE.get(k) or PRE.get(k)
         if not item:
             continue
-        if min_schema >= 3:
+        if min_schema >= 4:
+            farm = item.get("farmacologia_conduta") if isinstance(item, dict) else None
+            if int(item.get("cti_schema_version") or 0) < 4:
+                continue
+            if not (isinstance(farm, dict) and isinstance(farm.get("aplicavel"), bool) and isinstance(farm.get("classe_farmacologica"), str)):
+                continue
+            if questao_farmacologica(q) and farm.get("aplicavel") is not True:
+                continue
+        elif min_schema >= 3:
             farm = item.get("farmacologia_conduta") if isinstance(item, dict) else None
             if int(item.get("cti_schema_version") or 0) < 3:
                 continue
@@ -430,7 +441,7 @@ def gerar(q: dict):
                 if item:
                     item["id"] = q["id"]
                     item["modelo"] = p.modelo
-                    item["cti_schema_version"] = 3
+                    item["cti_schema_version"] = 4
                     _guardar(q, item)
                     p.ultimo_erro = ""
                     return item, None
@@ -480,6 +491,133 @@ def gerar(q: dict):
         return None, "nenhuma chave configurada (CTI_GEMINI_API_KEY / CTI_NVIDIA_API_KEY)"
     return None, "; ".join(motivos)
 
+
+
+MINIESTACAO_SISTEMA = """Você é um preceptor de habilidades clínicas que prepara candidatos para a 2ª fase do Revalida/INEP.
+Transforme uma questão objetiva já respondida em um microtreino clínico de 3–5 minutos. Use o caso da questão como base e não invente que o checklist é oficial do INEP.
+O treino deve desenvolver abordagem inicial, anamnese dirigida, exame físico, hipóteses/diferenciais, exames, conduta, orientação e prescrição quando pertinente.
+Não revele informações que não estejam no enunciado como se fossem fatos do paciente. Se algum dado seria necessário, formule-o como algo que o candidato deveria perguntar, examinar ou solicitar.
+Em farmacologia, não invente dose quando faltarem dados essenciais. Responda SOMENTE com JSON válido."""
+
+MINIESTACAO_INSTRUCOES = """Gere exatamente um objeto JSON com este formato:
+{
+  "aplicavel": true/false,
+  "titulo": "nome curto da miniestação",
+  "cenario": "resumo clínico de 1–3 frases usando somente fatos do enunciado",
+  "tempo_sugerido_min": 4,
+  "objetivo": "competência principal a treinar",
+  "instrucoes_candidato": "o que o candidato deve fazer sem entregar a resposta",
+  "etapas": [
+    {
+      "id": "abertura|anamnese|exame|hipoteses|exames|conduta|prescricao|orientacoes",
+      "titulo": "título curto",
+      "pergunta": "comando direto para o candidato responder",
+      "itens_esperados": ["2 a 6 itens objetivos"],
+      "pontos_criticos": ["erros de segurança ou omissões importantes, apenas quando pertinentes"]
+    }
+  ],
+  "fechamento": ["2–5 mensagens finais/alertas high-yield"],
+  "referencia": "fonte apenas se tiver certeza; caso contrário vazio"
+}
+
+Regras:
+- Se a questão não tiver conteúdo clínico aproveitável para uma miniestação, use aplicavel=false, etapas=[] e explique isso brevemente em objetivo.
+- Se aplicavel=true, gere 5–7 etapas em ordem clínica. Não crie etapas irrelevantes.
+- A pergunta de cada etapa deve funcionar como um interrogatório progressivo: o estudante escreve o que faria e depois compara com o checklist.
+- Em situações de urgência/emergência, a primeira etapa deve priorizar estabilidade/ABCDE quando indicado.
+- Em GO, pediatria, clínica e cirurgia, inclua anamnese e exame dirigidos apropriados ao caso.
+- Inclua etapa de prescrição apenas quando tratamento farmacológico fizer sentido no caso. Nessa etapa, cobre fármaco/classe, dose/via/frequência/duração somente quando o enunciado permitir; caso contrário cobre o reconhecimento da necessidade de individualização.
+- Não copie literalmente a resposta da questão como instrução inicial. O objetivo é treinar raciocínio e comunicação clínica.
+- Não chame os itens de "checklist oficial"; são critérios educacionais contextuais inspirados no fluxo da 2ª fase.
+
+QUESTÃO BASE:
+"""
+
+_MINI_CACHE = {}
+
+
+def _mini_valida(item: dict) -> bool:
+    if not isinstance(item, dict) or not isinstance(item.get("aplicavel"), bool):
+        return False
+    if item.get("aplicavel") is False:
+        return True
+    if not _texto_ok(item.get("titulo", ""), 5) or not _texto_ok(item.get("instrucoes_candidato", ""), 20):
+        return False
+    etapas = item.get("etapas")
+    if not isinstance(etapas, list) or not (4 <= len(etapas) <= 8):
+        return False
+    for et in etapas:
+        if not isinstance(et, dict):
+            return False
+        if not _texto_ok(et.get("titulo", ""), 3) or not _texto_ok(et.get("pergunta", ""), 12):
+            return False
+        itens = et.get("itens_esperados")
+        if not isinstance(itens, list) or len(itens) < 2:
+            return False
+        if not all(_texto_ok(v, 3) for v in itens):
+            return False
+        if not isinstance(et.get("pontos_criticos", []), list):
+            return False
+    return True
+
+
+def gerar_mini_estacao(q: dict) -> dict:
+    """Gera sob demanda uma miniestação contextual. Cache principal fica no navegador; este cache é apenas da instância."""
+    key = str(q.get("id"))
+    if key in _MINI_CACHE:
+        return dict(_MINI_CACHE[key])
+    if not PROVEDORES:
+        return {"fonte": "indisponivel", "motivo": "nenhuma chave de IA configurada", "question_id": q.get("id")}
+
+    msgs = [
+        {"role": "system", "content": MINIESTACAO_SISTEMA},
+        {"role": "user", "content": MINIESTACAO_INSTRUCOES + fmt_questao(q)},
+    ]
+    motivos = []
+    for p in PROVEDORES:
+        if not p.disponivel():
+            motivos.append(f"{p.nome}: pausado ({p.ultimo_erro})")
+            continue
+        for tentativa in range(2):
+            try:
+                item = p.chamar(msgs, max_tokens=4500)
+                if isinstance(item, dict) and "miniestacao" in item and isinstance(item.get("miniestacao"), dict):
+                    item = item["miniestacao"]
+                if _mini_valida(item):
+                    out = dict(item)
+                    out["fonte"] = "ia"
+                    out["modelo"] = p.modelo
+                    out["question_id"] = q.get("id")
+                    out["schema_version"] = 1
+                    if out.get("aplicavel"):
+                        out["tempo_sugerido_min"] = max(3, min(5, int(out.get("tempo_sugerido_min") or 4)))
+                    _MINI_CACHE[key] = out
+                    p.ultimo_erro = ""
+                    return dict(out)
+                p.ultimo_erro = "miniestação incompleta/reprovada pela validação"
+                if tentativa == 0:
+                    continue
+            except urllib.error.HTTPError as ex:
+                body = _motivo_http(ex)
+                p.ultimo_erro = f"HTTP {ex.code}" + (f": {body[:180]}" if body else "")
+                if ex.code in (401, 403, 404):
+                    p.pausado_ate = time.time() + 600
+                    break
+                if ex.code == 429:
+                    p.pausado_ate = time.time() + _retry_after(ex, 90)
+                    break
+                if ex.code in (500, 502, 503, 504) and tentativa == 0:
+                    time.sleep(2.0)
+                    continue
+                break
+            except Exception as ex:
+                p.ultimo_erro = ex.__class__.__name__
+                if tentativa == 0:
+                    time.sleep(1.0)
+                    continue
+                break
+        motivos.append(f"{p.nome}: {p.ultimo_erro}")
+    return {"fonte": "indisponivel", "motivo": "; ".join(motivos), "question_id": q.get("id")}
 
 def status() -> dict:
     agora = time.time()

@@ -183,3 +183,7 @@ Consulte `RECUPERACAO_ADMIN.md` para o procedimento de reset e recuperação.
 - Dose/via/frequência/duração são solicitadas ao modelo somente quando o contexto da questão oferece dados suficientes; o prompt manda explicitar limitações em vez de assumir parâmetros clínicos ausentes.
 - Comentários antigos não são tratados como schema v20; isso força atualização do comentário quando a IA estiver disponível, mantendo fallback legado se o provedor estiver indisponível.
 - Assets foram versionados para `20.0.0` e o Service Worker passou para `cti-v20-pharmacology-conduct`.
+
+## v24 — endpoint de miniestação
+
+`/api/ia-mini-estacao/{question_id}` segue o mesmo modelo de autorização da explicação completa: exige sessão válida, token de acesso à questão e `answer_token` emitido após a resposta. A geração permanece sujeita ao rate limit de IA já existente. Nenhuma chave de provedor é exposta ao frontend.

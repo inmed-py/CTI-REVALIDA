@@ -487,6 +487,7 @@ def _farmacologia(p: dict):
         "resumo_essencial": _txt(f.get("resumo_essencial")),
         "objetivo_terapeutico": _txt(f.get("objetivo_terapeutico")),
         "primeira_escolha": _txt(f.get("primeira_escolha")),
+        "classe_farmacologica": _txt(f.get("classe_farmacologica")),
         "dose": _txt(f.get("dose")),
         "via": _txt(f.get("via")),
         "frequencia": _txt(f.get("frequencia")),
@@ -517,8 +518,8 @@ def formatar(q: dict, p: dict) -> dict:
     import ia_provedores
     farm_relevante = ia_provedores.questao_farmacologica(q)
     return {
-        "fonte": "ia", "modelo": p.get("modelo"), "tema": tema, "area": q.get("especialidade"),
-        "schema_version": 3 if farm is not None else 1,
+        "fonte": "ia", "modelo": p.get("modelo"), "question_id": q.get("id"), "tema": tema, "area": q.get("especialidade"),
+        "schema_version": 4 if farm is not None else 1,
         "farmacologia_relevante": farm_relevante,
         "referencia": p.get("referencia") or "",
         "resumo": p.get("resumo", ""), "achado_chave": p.get("achado_chave", ""), "conceito_cobrado": p.get("conceito_cobrado", ""),
@@ -530,20 +531,20 @@ def formatar(q: dict, p: dict) -> dict:
 
 
 def explicacao_salva(q: dict):
-    """Só devolve cache compatível com a detecção farmacológica v22.
+    """Só devolve cache compatível com a schema farmacológico v24.
 
     Comentários antigos continuam úteis como fallback, mas não devem impedir a regeneração
     do quadro Farmacologia & Conduta em questões terapêuticas/farmacológicas.
     """
     import ia_provedores
-    p = ia_provedores.salvo(q, min_schema=3)
+    p = ia_provedores.salvo(q, min_schema=4)
     return formatar(q, p) if p else None
 
 
 def gerar_explicacao_ia(q: dict) -> dict:
     """Comentário v22 salvo → LLM → fallback legado → indisponível."""
     import ia_provedores
-    p = ia_provedores.salvo(q, min_schema=3)
+    p = ia_provedores.salvo(q, min_schema=4)
     legado = ia_provedores.salvo(q)
     if not p:
         p, motivo = ia_provedores.gerar(q)
@@ -554,6 +555,12 @@ def gerar_explicacao_ia(q: dict) -> dict:
                 return out
             return {"fonte": "indisponivel", "tema": q.get("tema"), "gabarito": q.get("gabarito_oficial"), "motivo": motivo}
     return formatar(q, p)
+
+
+def gerar_mini_estacao_ia(q: dict) -> dict:
+    """Miniestação contextual sob demanda, usando o mesmo pool de provedores da tutoria."""
+    import ia_provedores
+    return ia_provedores.gerar_mini_estacao(q)
 
 
 def gerar_dica_ia(q: dict) -> dict:

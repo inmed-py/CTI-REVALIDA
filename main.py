@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from clinical_ai import explicacao_salva, gerar_dica_ia, gerar_explicacao_ia, status_ia
+from clinical_ai import explicacao_salva, gerar_dica_ia, gerar_explicacao_ia, gerar_mini_estacao_ia, status_ia
 from conteudo_temas import CONTEUDO, ESTRATEGIA_POR_AREA
 from atualizacoes import AREAS as AREAS_ATUALIZACOES, buscar_atualizacoes
 from segunda_fase import catalogo as catalogo_segunda_fase, pep as pep_segunda_fase
@@ -188,7 +188,7 @@ async def seguranca(request: Request, call_next):
             return JSONResponse({"detail": "Autenticação necessária."}, status_code=401,
                                 headers={"Cache-Control": "no-store"})
 
-    private_static = {"/static/index.html", "/static/app.js", "/static/app.css", "/static/cti-app-v23.js", "/static/cti-app-v23.css"}
+    private_static = {"/static/index.html", "/static/app.js", "/static/app.css", "/static/cti-app-v24.js", "/static/cti-app-v24.css"}
     if AUTH_REQUIRED and path in private_static and not user:
         return PlainTextResponse("Not found", status_code=404)
 
@@ -222,7 +222,7 @@ async def seguranca(request: Request, call_next):
 
     resp = await call_next(request)
     h = resp.headers
-    h["X-CTI-Build"] = "23.0.0"
+    h["X-CTI-Build"] = "24.0.0"
     h["X-Content-Type-Options"] = "nosniff"
     h["Referrer-Policy"] = "strict-origin-when-cross-origin"
     h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
@@ -235,7 +235,7 @@ async def seguranca(request: Request, call_next):
         h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         if FRAME_ANCESTORS == "'none'":
             h["X-Frame-Options"] = "DENY"
-    if path.startswith("/api/") or path in ("/", "/static/index.html", "/static/login.html", "/static/app.js", "/static/app.css", "/static/cti-app-v23.js", "/static/cti-app-v23.css"):
+    if path.startswith("/api/") or path in ("/", "/static/index.html", "/static/login.html", "/static/app.js", "/static/app.css", "/static/cti-app-v24.js", "/static/cti-app-v24.css"):
         h["Cache-Control"] = "no-store, private"
         h["Pragma"] = "no-cache"
         h["Vary"] = "Cookie"
@@ -877,6 +877,15 @@ def ia_explicar(question_id: int, request: Request):
     _verificar_qtoken(request, question_id, request.headers.get("x-question-token"))
     _verificar_answer_token(request, question_id, request.headers.get("x-answer-token"))
     return gerar_explicacao_ia(BY_ID[question_id])
+
+
+@app.get("/api/ia-mini-estacao/{question_id}")
+def ia_mini_estacao(question_id: int, request: Request):
+    if question_id not in BY_ID:
+        raise HTTPException(404, "Questão não encontrada")
+    _verificar_qtoken(request, question_id, request.headers.get("x-question-token"))
+    _verificar_answer_token(request, question_id, request.headers.get("x-answer-token"))
+    return gerar_mini_estacao_ia(BY_ID[question_id])
 
 
 @app.get("/api/ia-dica/{question_id}")
