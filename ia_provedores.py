@@ -496,6 +496,7 @@ def gerar(q: dict):
 MINIESTACAO_SISTEMA = """Você é um preceptor de habilidades clínicas que prepara candidatos para a 2ª fase do Revalida/INEP.
 Transforme uma questão objetiva já respondida em um microtreino clínico de 3–5 minutos. Use o caso da questão como base e não invente que o checklist é oficial do INEP.
 O treino deve desenvolver abordagem inicial, anamnese dirigida, exame físico, hipóteses/diferenciais, exames, conduta, orientação e prescrição quando pertinente.
+A interação deve ser predominantemente por SELEÇÃO DE AÇÕES, não por resposta discursiva: em cada etapa o estudante deve escolher, entre opções plausíveis, tudo o que faria.
 Não revele informações que não estejam no enunciado como se fossem fatos do paciente. Se algum dado seria necessário, formule-o como algo que o candidato deveria perguntar, examinar ou solicitar.
 Em farmacologia, não invente dose quando faltarem dados essenciais. Responda SOMENTE com JSON válido."""
 
@@ -511,8 +512,12 @@ MINIESTACAO_INSTRUCOES = """Gere exatamente um objeto JSON com este formato:
     {
       "id": "abertura|anamnese|exame|hipoteses|exames|conduta|prescricao|orientacoes",
       "titulo": "título curto",
-      "pergunta": "comando direto para o candidato responder",
+      "pergunta": "comando direto para selecionar todas as ações adequadas",
       "itens_esperados": ["2 a 6 itens objetivos"],
+      "opcoes": [
+        {"texto":"ação possível", "correta":true, "feedback":"justificativa curta"},
+        {"texto":"ação plausível, mas inadequada/não prioritária", "correta":false, "feedback":"por que não deve ser escolhida"}
+      ],
       "pontos_criticos": ["erros de segurança ou omissões importantes, apenas quando pertinentes"]
     }
   ],
@@ -522,8 +527,10 @@ MINIESTACAO_INSTRUCOES = """Gere exatamente um objeto JSON com este formato:
 
 Regras:
 - Se a questão não tiver conteúdo clínico aproveitável para uma miniestação, use aplicavel=false, etapas=[] e explique isso brevemente em objetivo.
-- Se aplicavel=true, gere 5–7 etapas em ordem clínica. Não crie etapas irrelevantes.
-- A pergunta de cada etapa deve funcionar como um interrogatório progressivo: o estudante escreve o que faria e depois compara com o checklist.
+- Se aplicavel=true, gere 4–6 etapas em ordem clínica. Não crie etapas irrelevantes.
+- Cada etapa deve ter 5–8 opções de ação, com 2–5 corretas e pelo menos 1 incorreta/plausível. Nunca faça todas as opções corretas.
+- As opções incorretas devem ser plausíveis para prova, mas não absurdas; use erros de prioridade, segurança, indicação, sequência, exame ou conduta.
+- O feedback deve ser curto e didático, suficiente para explicar por que a opção está certa ou errada.
 - Em situações de urgência/emergência, a primeira etapa deve priorizar estabilidade/ABCDE quando indicado.
 - Em GO, pediatria, clínica e cirurgia, inclua anamnese e exame dirigidos apropriados ao caso.
 - Inclua etapa de prescrição apenas quando tratamento farmacológico fizer sentido no caso. Nessa etapa, cobre fármaco/classe, dose/via/frequência/duração somente quando o enunciado permitir; caso contrário cobre o reconhecimento da necessidade de individualização.
@@ -555,6 +562,20 @@ def _mini_valida(item: dict) -> bool:
         if not isinstance(itens, list) or len(itens) < 2:
             return False
         if not all(_texto_ok(v, 3) for v in itens):
+            return False
+        opcoes = et.get("opcoes")
+        if not isinstance(opcoes, list) or not (5 <= len(opcoes) <= 8):
+            return False
+        certas = 0
+        erradas = 0
+        for op in opcoes:
+            if not isinstance(op, dict) or not _texto_ok(op.get("texto", ""), 4) or not isinstance(op.get("correta"), bool):
+                return False
+            if op.get("feedback") and not _texto_ok(op.get("feedback"), 3):
+                return False
+            certas += 1 if op.get("correta") else 0
+            erradas += 0 if op.get("correta") else 1
+        if not (2 <= certas <= 5) or erradas < 1:
             return False
         if not isinstance(et.get("pontos_criticos", []), list):
             return False
@@ -588,7 +609,7 @@ def gerar_mini_estacao(q: dict) -> dict:
                     out["fonte"] = "ia"
                     out["modelo"] = p.modelo
                     out["question_id"] = q.get("id")
-                    out["schema_version"] = 1
+                    out["schema_version"] = 2
                     if out.get("aplicavel"):
                         out["tempo_sugerido_min"] = max(3, min(5, int(out.get("tempo_sugerido_min") or 4)))
                     _MINI_CACHE[key] = out
