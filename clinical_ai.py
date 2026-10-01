@@ -558,9 +558,15 @@ def gerar_explicacao_ia(q: dict) -> dict:
 
 
 def gerar_mini_estacao_ia(q: dict) -> dict:
-    """Miniestação contextual sob demanda, usando o mesmo pool de provedores da tutoria."""
+    """Modelo estático e imediato da miniestação; não chama provedor externo."""
     import ia_provedores
     return ia_provedores.gerar_mini_estacao(q)
+
+
+def enriquecer_mini_estacao_ia(q: dict) -> dict:
+    """Contextualização opcional em segundo plano; a estação já existe antes desta chamada."""
+    import ia_provedores
+    return ia_provedores.enriquecer_mini_estacao(q)
 
 
 def gerar_dica_ia(q: dict) -> dict:

@@ -318,7 +318,7 @@ class Provedor:
     def disponivel(self):
         return bool(self.key) and time.time() >= self.pausado_ate
 
-    def chamar(self, msgs, max_tokens=6000):
+    def chamar(self, msgs, max_tokens=6000, timeout=None):
         body = {
             "model": self.modelo,
             "temperature": self.temperature,
@@ -337,14 +337,14 @@ class Provedor:
             headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            with urllib.request.urlopen(req, timeout=(self.timeout if timeout is None else timeout)) as r:
                 payload = json.loads(r.read())
                 return _parse(payload["choices"][0]["message"]["content"])
         except urllib.error.HTTPError as ex:
             # Alguns endpoints não aceitam response_format; uma única repetição sem esse campo.
             if ex.code == 400 and self.json_mode:
                 self.json_mode = False
-                return self.chamar(msgs, max_tokens)
+                return self.chamar(msgs, max_tokens, timeout=timeout)
             raise
 
 
@@ -553,67 +553,47 @@ def gerar(q: dict):
 
 
 MINIESTACAO_SISTEMA = """Você é um preceptor de habilidades clínicas que prepara candidatos para a 2ª fase do Revalida/INEP.
-Transforme uma questão objetiva já respondida em um microtreino clínico de 3–5 minutos. Use o caso da questão como base e não invente que o checklist é oficial do INEP.
-O treino deve desenvolver abordagem inicial, anamnese dirigida, exame físico, hipóteses/diferenciais, exames, conduta, orientação e prescrição quando pertinente.
-A interação deve ser predominantemente por SELEÇÃO DE AÇÕES, não por resposta discursiva: em cada etapa o estudante deve escolher, entre opções plausíveis, tudo o que faria.
-Não revele informações que não estejam no enunciado como se fossem fatos do paciente. Se algum dado seria necessário, formule-o como algo que o candidato deveria perguntar, examinar ou solicitar.
-Em farmacologia, não invente dose quando faltarem dados essenciais. Responda SOMENTE com JSON válido."""
+A estrutura da miniestação JÁ EXISTE no aplicativo. Sua tarefa é somente contextualizar o conteúdo para o caso clínico fornecido.
+Não recrie layout, progresso, pontuação ou etapas. Para cada etapa recebida, devolva apenas ações específicas do caso que realmente acrescentem valor.
+Não invente dados do paciente. Se um dado precisa ser obtido, formule como ação de perguntar, examinar ou solicitar.
+Em farmacologia, não invente dose quando faltarem dados essenciais. Use nomes genéricos e associe classe farmacológica quando pertinente.
+Não chame o material de checklist oficial do INEP. Responda SOMENTE com JSON válido."""
 
-MINIESTACAO_INSTRUCOES = """Gere exatamente um objeto JSON com este formato:
+MINIESTACAO_ENRIQUECER_INSTRUCOES = """Contextualize o modelo estático abaixo para a questão. Responda exatamente:
 {
-  "aplicavel": true/false,
-  "titulo": "nome curto da miniestação",
-  "cenario": "resumo clínico de 1–3 frases usando somente fatos do enunciado",
-  "tempo_sugerido_min": 4,
-  "objetivo": "competência principal a treinar",
-  "instrucoes_candidato": "o que o candidato deve fazer sem entregar a resposta",
+  "titulo": "nome curto e específico",
+  "objetivo": "competência principal",
   "etapas": [
     {
-      "id": "abertura|anamnese|exame|hipoteses|exames|conduta|prescricao|orientacoes",
-      "titulo": "título curto",
-      "pergunta": "comando direto para selecionar todas as ações adequadas",
-      "itens_esperados": ["2 a 6 itens objetivos"],
-      "opcoes": [
-        {"texto":"ação possível", "correta":true, "feedback":"justificativa curta"},
-        {"texto":"ação plausível, mas inadequada/não prioritária", "correta":false, "feedback":"por que não deve ser escolhida"}
+      "id": "id de uma etapa existente no modelo",
+      "corretas": ["1 a 4 ações específicas deste caso"],
+      "incorretas": [
+        {"texto":"0 a 2 ações plausíveis porém inadequadas", "feedback":"explicação curta"}
       ],
-      "pontos_criticos": ["erros de segurança ou omissões importantes, apenas quando pertinentes"]
+      "pontos_criticos": ["0 a 2 alertas realmente importantes"]
     }
   ],
-  "fechamento": ["2–5 mensagens finais/alertas high-yield"],
-  "referencia": "fonte apenas se tiver certeza; caso contrário vazio"
+  "fechamento": ["0 a 3 mensagens high-yield"],
+  "referencia": "fonte somente se tiver certeza; caso contrário vazio"
 }
 
 Regras:
-- Se a questão não tiver conteúdo clínico aproveitável para uma miniestação, use aplicavel=false, etapas=[] e explique isso brevemente em objetivo.
-- Se aplicavel=true, gere 4–6 etapas em ordem clínica. Não crie etapas irrelevantes.
-- Cada etapa deve ter 5–8 opções de ação, com 2–5 corretas e pelo menos 1 incorreta/plausível. Nunca faça todas as opções corretas.
-- As opções incorretas devem ser plausíveis para prova, mas não absurdas; use erros de prioridade, segurança, indicação, sequência, exame ou conduta.
-- O feedback deve ser curto e didático, suficiente para explicar por que a opção está certa ou errada.
-- Em situações de urgência/emergência, a primeira etapa deve priorizar estabilidade/ABCDE quando indicado.
-- Em GO, pediatria, clínica e cirurgia, inclua anamnese e exame dirigidos apropriados ao caso.
-- Inclua etapa de prescrição apenas quando tratamento farmacológico fizer sentido no caso. Nessa etapa, cobre fármaco/classe, dose/via/frequência/duração somente quando o enunciado permitir; caso contrário cobre o reconhecimento da necessidade de individualização.
-- Não copie literalmente a resposta da questão como instrução inicial. O objetivo é treinar raciocínio e comunicação clínica.
-- Não chame os itens de "checklist oficial"; são critérios educacionais contextuais inspirados no fluxo da 2ª fase.
+- Use SOMENTE ids de etapas listados em ETAPAS DO MODELO.
+- Não devolva opções genéricas que o modelo já contém; acrescente detalhes específicos do caso.
+- Não precisa preencher todas as etapas: priorize as que mais se beneficiam de contextualização.
+- Evite respostas longas. O objetivo é reduzir latência e tokens.
+- Se o caso for procedural, detalhe sequência/segurança técnica apenas quando a questão realmente permitir.
+- Se a questão envolver tratamento, contextualize conduta e, quando pertinente, prescrição/classe farmacológica sem inventar dados ausentes.
+
+ETAPAS DO MODELO:
+{etapas}
 
 QUESTÃO BASE:
+{questao}
 """
 
 _MINI_CACHE = {}
-
-
-def _boolish(v):
-    if isinstance(v, bool):
-        return v
-    if isinstance(v, (int, float)):
-        return bool(v)
-    if isinstance(v, str):
-        t = _sem_acentos(v).strip().lower()
-        if t in ("true", "verdadeiro", "sim", "yes", "1", "correta", "adequada"):
-            return True
-        if t in ("false", "falso", "nao", "no", "0", "incorreta", "inadequada"):
-            return False
-    return None
+_MINI_ENRICH_CACHE = {}
 
 
 def _mini_clinica(q: dict) -> bool:
@@ -626,209 +606,140 @@ def _mini_clinica(q: dict) -> bool:
     return questao_farmacologica(q) or sum(1 for x in sinais if x in txt) >= 2
 
 
+def _mini_tipo_template(q: dict) -> str:
+    area = _sem_acentos(str(q.get("especialidade") or "")).lower()
+    tema = _sem_acentos(str(q.get("tema") or "")).lower()
+    txt = _sem_acentos(" ".join(str(q.get(k) or "") for k in ("enunciado", "tema", "resposta_correta_texto"))).lower()
+    procedural = (
+        "procedimento", "tecnica", "passo a passo", "puncao", "toracocent", "paracent", "intub", "cricotir", "traqueost",
+        "cateter", "sondagem", "sutura", "drenagem", "biops", "incisao", "lavagem", "reanimacao", "rcp", "cardiovers",
+        "desfibril", "parto vaginal", "manobra de", "curativo", "imobiliz", "acesso venoso",
+    )
+    if any(x in txt for x in procedural):
+        return "procedimento"
+    if "ginecologia" in area or "obstetric" in area or any(x in txt for x in ("gestante", "gravida", "gestacao", "puerper", "parto", "sangramento vaginal")):
+        return "obstetricia"
+    if "pediatria" in area or any(x in txt for x in ("crianca", "lactente", "recem-nasc", "neonato", "escolar", "adolescente")):
+        return "pediatria"
+    if any(x in txt for x in ("ideacao suic", "alucin", "delirio", "psicose", "mania", "depress", "transtorno mental", "agitado", "estado mental")) or "psiquiatr" in tema:
+        return "psiquiatria"
+    emergencia = (
+        "instavel", "choque", "parada", "emergencia", "urgencia", "trauma", "rebaixamento", "hipotens", "dessatur",
+        "dispneia intensa", "dor toracica", "anafilax", "convuls", "sepse", "hemorragia", "avc", "infarto",
+    )
+    if any(x in txt for x in emergencia):
+        return "emergencia"
+    if "cirurgia" in area:
+        return "cirurgia"
+    return "clinico"
+
+
 def _mini_distratores(etapa_id: str):
     banco = {
+        "seguranca": [
+            ("Definir a conduta definitiva antes de avaliar estabilidade e risco imediato.", "A prioridade é reconhecer instabilidade e ameaças imediatas antes da decisão definitiva."),
+            ("Ignorar sinais vitais porque o enunciado já sugere um diagnóstico.", "Sinais vitais podem mudar completamente a prioridade e o destino do paciente."),
+        ],
         "abertura": [
-            ("Definir a conduta definitiva antes de avaliar estabilidade e sinais de gravidade.", "A prioridade clínica deve ser estabelecida antes da decisão definitiva."),
-            ("Ignorar sinais vitais porque o enunciado já sugere o diagnóstico.", "Sinais vitais e gravidade podem mudar completamente a prioridade da conduta."),
+            ("Encerrar a avaliação inicial assim que surgir uma hipótese provável.", "A abordagem inicial ainda precisa excluir gravidade e condições que mudem a conduta."),
+            ("Ignorar medicamentos em uso e alergias na primeira avaliação.", "Esses dados podem alterar diagnóstico, segurança e tratamento."),
         ],
         "anamnese": [
-            ("Limitar a entrevista à queixa principal e encerrar assim que surgir uma hipótese provável.", "A anamnese dirigida precisa buscar gravidade, diferenciais e fatores que modificam a conduta."),
-            ("Omitir medicamentos em uso e alergias por não fazerem parte do diagnóstico principal.", "Medicamentos e alergias podem alterar diagnóstico, contraindicações e tratamento."),
+            ("Limitar a entrevista à queixa principal sem explorar evolução, fatores de risco e sinais de alarme.", "A anamnese dirigida precisa definir gravidade, diferenciais e fatores que modificam a conduta."),
+            ("Omitir medicamentos, alergias e tratamentos prévios.", "Esses dados podem revelar causa, contraindicação, interação ou falha terapêutica."),
         ],
         "exame": [
-            ("Pular o exame físico e decidir apenas com os dados já fornecidos pela questão.", "Na prática clínica, o exame dirigido ajuda a confirmar gravidade e diferenciais."),
-            ("Fazer um exame indiferenciado sem priorizar o sistema e os sinais de gravidade do caso.", "O exame deve ser dirigido pela hipótese e pelo risco clínico."),
+            ("Pular o exame físico e decidir apenas com os dados já fornecidos.", "O exame dirigido ajuda a confirmar gravidade, hipótese e diferenciais."),
+            ("Fazer exame indiferenciado sem priorizar sistema-alvo e sinais de gravidade.", "O exame deve ser orientado pelo risco e pelas hipóteses clínicas."),
+        ],
+        "hipoteses": [
+            ("Fechar o diagnóstico sem considerar diferenciais relevantes ou sinais discordantes.", "Raciocínio clínico seguro inclui diferenciais que mudam urgência ou tratamento."),
+            ("Tratar um único achado isolado como diagnóstico definitivo.", "O diagnóstico deve integrar história, exame e dados complementares."),
         ],
         "exames": [
-            ("Solicitar uma bateria extensa de exames sem relação com hipótese ou impacto na conduta.", "Exames devem responder a uma pergunta clínica e modificar decisão ou segurança."),
-            ("Adiar toda investigação mesmo quando um exame é necessário para confirmar gravidade ou orientar tratamento.", "Quando o exame muda conduta ou segurança, ele deve ser solicitado no momento adequado."),
+            ("Solicitar bateria extensa de exames sem pergunta clínica definida.", "Exames devem confirmar hipótese, avaliar gravidade ou modificar conduta."),
+            ("Adiar investigação mesmo quando um exame é necessário para segurança ou decisão terapêutica.", "Quando o resultado muda a conduta, ele deve ser solicitado oportunamente."),
         ],
         "conduta": [
-            ("Manter uma estratégia claramente ineficaz sem reavaliar diagnóstico, gravidade ou indicação terapêutica.", "Falha terapêutica exige reavaliação clínica e da estratégia escolhida."),
-            ("Escolher tratamento sem checar contraindicações, interações ou condições que exijam ajuste.", "Segurança terapêutica faz parte da conduta correta."),
+            ("Escolher tratamento sem checar contraindicações, interações ou necessidade de ajuste.", "Segurança terapêutica faz parte da conduta correta."),
+            ("Manter estratégia ineficaz sem reavaliar diagnóstico, gravidade ou indicação.", "Falha terapêutica exige reavaliação da hipótese e do manejo."),
         ],
         "prescricao": [
-            ("Fixar dose, via e duração mesmo quando faltam dados essenciais para uma prescrição segura.", "A prescrição deve respeitar idade, peso, função renal/hepática, gestação e gravidade quando pertinentes."),
-            ("Prescrever pelo nome comercial e omitir orientação de uso e monitorização.", "Para treino de prova, prefira nome genérico e inclua orientação/monitorização relevante."),
+            ("Fixar dose, via e duração mesmo quando faltam dados essenciais para prescrição segura.", "A prescrição deve respeitar idade, peso, função renal/hepática, gestação e gravidade quando pertinentes."),
+            ("Usar apenas nome comercial e omitir orientação de uso e monitorização.", "Para treino de prova, prefira nome genérico e inclua orientação/monitorização relevante."),
         ],
         "orientacoes": [
-            ("Encerrar o atendimento sem explicar sinais de alarme ou quando procurar reavaliação.", "Orientação de retorno e sinais de alarme fazem parte da segurança do paciente."),
-            ("Dar orientações genéricas sem relacioná-las ao problema clínico e ao seguimento necessário.", "Orientações devem ser específicas para o risco, tratamento e acompanhamento do caso."),
+            ("Encerrar o atendimento sem explicar sinais de alarme ou quando procurar reavaliação.", "Orientação de retorno faz parte da segurança do paciente."),
+            ("Dar orientações genéricas sem relacioná-las ao problema e ao seguimento necessário.", "Orientações devem ser específicas para risco, tratamento e acompanhamento."),
+        ],
+        "indicacao": [
+            ("Executar o procedimento sem confirmar indicação, contraindicações ou objetivo.", "A indicação e a segurança precisam estar claras antes da técnica."),
+            ("Pular identificação, consentimento e checagens prévias quando são aplicáveis.", "Checagens pré-procedimento reduzem erro e complicações."),
+        ],
+        "preparo": [
+            ("Iniciar sem organizar material, posicionamento e medidas de assepsia/monitorização pertinentes.", "Preparo adequado reduz interrupções e eventos adversos."),
+            ("Improvisar a técnica sem plano para complicações imediatas.", "Procedimentos exigem preparo para reconhecer e manejar complicações."),
+        ],
+        "tecnica": [
+            ("Executar etapas em ordem aleatória, sem respeitar técnica e referências anatômicas.", "A sequência técnica e os marcos anatômicos são essenciais para segurança."),
+            ("Prosseguir apesar de sinal de complicação sem reavaliar a execução.", "Sinais de complicação exigem interrupção/reavaliação conforme o procedimento."),
+        ],
+        "complicacoes": [
+            ("Considerar o procedimento concluído sem procurar complicações imediatas.", "A avaliação pós-procedimento faz parte da técnica segura."),
+            ("Não documentar intercorrências ou necessidade de reavaliação.", "Documentação e seguimento são parte da segurança assistencial."),
         ],
     }
-    return banco.get(etapa_id, banco["conduta"])
+    return banco.get(etapa_id, banco.get("conduta", []))
 
 
-def _mini_stage_id(valor: str, idx: int) -> str:
-    t = _sem_acentos(valor or "").lower()
-    for k, termos in {
-        "abertura": ("abertura", "inicial", "prioridade", "estabil"),
-        "anamnese": ("anamn", "historia", "entrevista", "interrog"),
-        "exame": ("exame fis", "exame clin", "avaliacao fis"),
-        "hipoteses": ("hipot", "diferencial", "diagnost"),
-        "exames": ("complement", "laborator", "imagem", "investig"),
-        "conduta": ("conduta", "manejo", "tratamento"),
-        "prescricao": ("prescri", "farmac", "medic"),
-        "orientacoes": ("orient", "seguimento", "retorno", "alta"),
-    }.items():
-        if any(x in t for x in termos):
-            return k
-    ordem = ["abertura", "anamnese", "exame", "exames", "conduta", "orientacoes"]
-    return ordem[min(idx, len(ordem) - 1)]
-
-
-def _mini_normalizar(item: dict, q: dict) -> dict | None:
-    """Aproveita respostas úteis de modelos menores em vez de reprovar por pequenas diferenças de schema."""
-    if isinstance(item, dict) and isinstance(item.get("miniestacao"), dict):
-        item = item["miniestacao"]
-    if not isinstance(item, dict):
-        return None
-
-    aplic = _boolish(item.get("aplicavel"))
-    etapas_in = item.get("etapas") if isinstance(item.get("etapas"), list) else []
-    if aplic is None:
-        aplic = bool(etapas_in)
-    if aplic is False and _mini_clinica(q) and etapas_in:
-        aplic = True
-
-    if not aplic:
-        return {
-            "aplicavel": False,
-            "titulo": str(item.get("titulo") or f"Miniestação: {q.get('tema') or 'caso clínico'}")[:140],
-            "cenario": str(item.get("cenario") or q.get("enunciado") or "")[:900],
-            "tempo_sugerido_min": 4,
-            "objetivo": str(item.get("objetivo") or "Este conteúdo não se converte com segurança em uma miniestação curta."),
-            "instrucoes_candidato": str(item.get("instrucoes_candidato") or ""),
-            "etapas": [],
-            "fechamento": [],
-            "referencia": str(item.get("referencia") or ""),
-        }
-
-    etapas = []
-    for idx, raw in enumerate(etapas_in[:7]):
-        if not isinstance(raw, dict):
-            continue
-        eid = _mini_stage_id(str(raw.get("id") or raw.get("titulo") or ""), idx)
-        titulo = str(raw.get("titulo") or eid.replace("_", " ").title()).strip()
-        pergunta = str(raw.get("pergunta") or f"Quais ações são adequadas nesta etapa de {titulo.lower()}?").strip()
-        itens = raw.get("itens_esperados") if isinstance(raw.get("itens_esperados"), list) else []
-        itens = [str(x).strip() for x in itens if _texto_ok(x, 3)][:6]
-
-        ops = []
-        for op in (raw.get("opcoes") if isinstance(raw.get("opcoes"), list) else [])[:10]:
-            if isinstance(op, str):
-                ops.append({"texto": op.strip(), "correta": None, "feedback": ""})
-                continue
-            if not isinstance(op, dict):
-                continue
-            texto = str(op.get("texto") or op.get("acao") or op.get("opcao") or "").strip()
-            if not _texto_ok(texto, 4):
-                continue
-            correta = _boolish(op.get("correta"))
-            fb = str(op.get("feedback") or op.get("justificativa") or "").strip()
-            ops.append({"texto": texto, "correta": correta, "feedback": fb})
-
-        # Se o modelo trouxe itens esperados, eles viram opções corretas quando faltaram opções estruturadas.
-        if len(ops) < 4 and itens:
-            existentes = {_sem_acentos(x["texto"]).lower() for x in ops}
-            for it in itens:
-                k = _sem_acentos(it).lower()
-                if k not in existentes:
-                    ops.append({"texto": it, "correta": True, "feedback": "Ação esperada nesta etapa do caso."})
-                    existentes.add(k)
-
-        # Tenta inferir flags ausentes comparando com itens esperados; o que não casar fica sem rótulo até receber distrator.
-        itens_norm = [_sem_acentos(x).lower() for x in itens]
-        for op in ops:
-            if op["correta"] is None:
-                txt = _sem_acentos(op["texto"]).lower()
-                op["correta"] = any((it in txt or txt in it) and min(len(it), len(txt)) >= 12 for it in itens_norm) if itens_norm else True
-            if not op["feedback"]:
-                op["feedback"] = "Ação adequada e coerente com a etapa." if op["correta"] else "Ação inadequada ou não prioritária neste momento."
-
-        # Garante ao menos 2 corretas e 1 distrator plausível.
-        corretas = sum(1 for op in ops if op["correta"])
-        if corretas < 2:
-            for it in itens:
-                if corretas >= 2:
-                    break
-                if not any(_sem_acentos(it).lower() == _sem_acentos(o["texto"]).lower() for o in ops):
-                    ops.append({"texto": it, "correta": True, "feedback": "Ação esperada nesta etapa do caso."})
-                    corretas += 1
-        if not any(not op["correta"] for op in ops):
-            for texto, fb in _mini_distratores(eid):
-                ops.append({"texto": texto, "correta": False, "feedback": fb})
-                if len(ops) >= 5:
-                    break
-        while len(ops) < 4:
-            texto, fb = _mini_distratores(eid)[len(ops) % 2]
+def _mini_stage(eid, titulo, pergunta, corretas, criticos=None):
+    ops = []
+    vistos = set()
+    for x in corretas:
+        txt = str(x or "").strip()
+        k = _sem_acentos(txt).lower()
+        if _texto_ok(txt, 4) and k not in vistos:
+            ops.append({"texto": txt, "correta": True, "feedback": "Ação adequada e coerente com esta etapa do caso."})
+            vistos.add(k)
+    for texto, fb in _mini_distratores(eid):
+        k = _sem_acentos(texto).lower()
+        if k not in vistos:
             ops.append({"texto": texto, "correta": False, "feedback": fb})
-
-        # Máximo de 8 mantendo mistura entre corretas e incorretas.
-        if len(ops) > 8:
-            cert = [o for o in ops if o["correta"]][:5]
-            err = [o for o in ops if not o["correta"]][:3]
-            ops = (cert + err)[:8]
-
-        if sum(1 for o in ops if o["correta"]) < 1 or not any(not o["correta"] for o in ops):
-            continue
-        pontos = raw.get("pontos_criticos") if isinstance(raw.get("pontos_criticos"), list) else []
-        etapas.append({
-            "id": eid,
-            "titulo": titulo[:100],
-            "pergunta": pergunta[:320],
-            "itens_esperados": itens or [o["texto"] for o in ops if o["correta"]][:5],
-            "opcoes": ops,
-            "pontos_criticos": [str(x).strip() for x in pontos if _texto_ok(x, 3)][:4],
-        })
-
-    if len(etapas) < 3:
-        return None
+            vistos.add(k)
+    while len(ops) < 4:
+        ops.append({"texto": "Tomar uma decisão sem integrar história, exame e segurança do paciente.", "correta": False, "feedback": "A decisão deve integrar os dados clínicos relevantes."})
     return {
-        "aplicavel": True,
-        "titulo": str(item.get("titulo") or f"Miniestação: {q.get('tema') or 'caso clínico'}")[:140],
-        "cenario": str(item.get("cenario") or q.get("enunciado") or "")[:900],
-        "tempo_sugerido_min": max(3, min(5, int(item.get("tempo_sugerido_min") or 4))),
-        "objetivo": str(item.get("objetivo") or f"Treinar abordagem clínica dirigida em {q.get('tema') or 'caso clínico'}")[:260],
-        "instrucoes_candidato": str(item.get("instrucoes_candidato") or "Selecione todas as ações que você realizaria em cada etapa, priorizando segurança, raciocínio e conduta.")[:500],
-        "etapas": etapas,
-        "fechamento": [str(x).strip() for x in (item.get("fechamento") or []) if _texto_ok(x, 3)][:5] if isinstance(item.get("fechamento"), list) else [],
-        "referencia": str(item.get("referencia") or "")[:300],
+        "id": eid,
+        "titulo": titulo,
+        "pergunta": pergunta,
+        "itens_esperados": [o["texto"] for o in ops if o["correta"]][:6],
+        "opcoes": ops[:8],
+        "pontos_criticos": list(criticos or [])[:4],
     }
 
 
-def _mini_valida(item: dict) -> bool:
-    if not isinstance(item, dict) or not isinstance(item.get("aplicavel"), bool):
-        return False
-    if item.get("aplicavel") is False:
-        return True
-    if not _texto_ok(item.get("titulo", ""), 3) or not _texto_ok(item.get("instrucoes_candidato", ""), 12):
-        return False
-    etapas = item.get("etapas")
-    if not isinstance(etapas, list) or not (3 <= len(etapas) <= 7):
-        return False
-    for et in etapas:
-        if not isinstance(et, dict) or not _texto_ok(et.get("titulo", ""), 3) or not _texto_ok(et.get("pergunta", ""), 8):
-            return False
-        opcoes = et.get("opcoes")
-        if not isinstance(opcoes, list) or not (4 <= len(opcoes) <= 8):
-            return False
-        certas = erradas = 0
-        for op in opcoes:
-            if not isinstance(op, dict) or not _texto_ok(op.get("texto", ""), 4) or not isinstance(op.get("correta"), bool):
-                return False
-            certas += 1 if op.get("correta") else 0
-            erradas += 0 if op.get("correta") else 1
-        if certas < 1 or erradas < 1:
-            return False
-    return True
-
-
-def _mini_fallback_local(q: dict, motivo: str = "") -> dict:
-    """Fallback determinístico: usa questão + correção já disponível e nunca depende de nova chamada externa."""
+def _mini_template_estatico(q: dict) -> dict:
+    """Modelo nativo do CTI: instantâneo, determinístico e sem chamada de IA."""
     base = salvo(q, min_schema=4) or salvo(q) or {}
+    if not _mini_clinica(q):
+        return {
+            "aplicavel": False,
+            "titulo": f"Miniestação: {q.get('tema') or 'questão'}",
+            "cenario": str(q.get("enunciado") or "")[:900],
+            "tempo_sugerido_min": 4,
+            "objetivo": "Esta questão não contém um cenário clínico suficiente para uma miniestação curta sem inventar dados.",
+            "instrucoes_candidato": "",
+            "etapas": [],
+            "fechamento": [],
+            "referencia": str(base.get("referencia") or "")[:300],
+            "fonte": "template_estatico",
+            "modo_template": True,
+            "tipo_template": "nao_clinico",
+            "question_id": q.get("id"),
+            "schema_version": 4,
+        }
     tema = str(q.get("tema") or q.get("especialidade") or "caso clínico")
+    tipo = _mini_tipo_template(q)
     achado = str(base.get("achado_chave") or "").strip()
     correta = str(q.get("resposta_correta_texto") or "").strip()
     farm = base.get("farmacologia_conduta") if isinstance(base.get("farmacologia_conduta"), dict) else {}
@@ -836,155 +747,357 @@ def _mini_fallback_local(q: dict, motivo: str = "") -> dict:
     primeira = str(farm.get("primeira_escolha") or "").strip()
     classe = str(farm.get("classe_farmacologica") or "").strip()
 
-    def st(eid, titulo, pergunta, corretas, criticos=None):
-        ops = [{"texto": x, "correta": True, "feedback": "Ação adequada e coerente com esta etapa do caso."} for x in corretas if _texto_ok(x, 4)]
-        for texto, fb in _mini_distratores(eid):
-            ops.append({"texto": texto, "correta": False, "feedback": fb})
-        return {"id": eid, "titulo": titulo, "pergunta": pergunta, "itens_esperados": [o["texto"] for o in ops if o["correta"]], "opcoes": ops[:8], "pontos_criticos": criticos or []}
+    def achado_txt(padrao):
+        return f"Valorizar como achado-chave do caso: {achado[:220]}." if achado else padrao
 
-    abertura = [
-        "Confirmar estabilidade clínica e procurar sinais de gravidade antes de aprofundar a investigação.",
-        f"Reconhecer o problema central e priorizar a abordagem de {tema}.",
-        "Rever comorbidades, medicamentos em uso e alergias que possam modificar a conduta.",
-    ]
-    if achado:
-        abertura[1] = f"Valorizar como achado-chave do caso: {achado[:220]}."
+    etapas = []
+    if tipo == "procedimento":
+        etapas = [
+            _mini_stage("indicacao", "Indicação e segurança", "O que deve ser confirmado antes de iniciar o procedimento?", [
+                "Confirmar indicação, objetivo do procedimento e condições clínicas que modificam risco ou técnica.",
+                "Checar identificação, alergias, medicamentos relevantes e contraindicações quando aplicáveis.",
+                "Explicar o procedimento e obter consentimento/assentimento conforme o contexto.",
+            ], ["Não iniciar sem reconhecer contraindicações ou instabilidade que exijam outra prioridade."]),
+            _mini_stage("preparo", "Preparo", "Quais ações organizam um procedimento seguro?", [
+                "Separar material necessário e conferir funcionamento antes de começar.",
+                "Posicionar o paciente e aplicar assepsia, analgesia/anestesia e monitorização quando pertinentes.",
+                "Definir previamente como reconhecer e manejar complicações imediatas.",
+            ]),
+            _mini_stage("tecnica", "Técnica", "Como conduzir a execução de forma segura?", [
+                f"Executar a técnica em sequência lógica, respeitando marcos anatômicos e objetivo relacionado a {tema}.",
+                "Manter técnica asséptica e reavaliar o paciente durante a execução quando pertinente.",
+                "Confirmar resultado/posicionamento/efetividade do procedimento conforme a técnica exigir.",
+            ], ["Interromper e reavaliar se surgirem sinais de complicação."]),
+            _mini_stage("complicacoes", "Complicações", "O que fazer após a execução?", [
+                "Pesquisar complicações imediatas e reavaliar sinais vitais/estado clínico quando indicado.",
+                "Registrar técnica, achados, intercorrências e resposta do paciente.",
+                "Definir cuidados pós-procedimento e necessidade de monitorização/reavaliação.",
+            ]),
+            _mini_stage("orientacoes", "Orientações", "Como finalizar o atendimento após o procedimento?", [
+                "Explicar cuidados posteriores, sinais de alarme e quando procurar reavaliação.",
+                "Confirmar compreensão do paciente/acompanhante e organizar seguimento quando necessário.",
+            ]),
+        ]
+    elif tipo == "emergencia":
+        etapas = [
+            _mini_stage("seguranca", "Abordagem de emergência", "Quais ações devem ocorrer primeiro?", [
+                "Avaliar estabilidade e ameaças imediatas com abordagem sistematizada (ABCDE quando indicada).",
+                "Monitorizar sinais vitais e obter acesso/oxigenação/suporte conforme necessidade clínica.",
+                achado_txt("Identificar sinais de gravidade que mudam prioridade, destino e necessidade de intervenção imediata."),
+            ], ["Priorizar estabilização antes de investigação extensa quando houver instabilidade."]),
+            _mini_stage("anamnese", "História dirigida", "Quais dados rápidos mudam a conduta?", [
+                "Caracterizar início, evolução, sintomas associados e evento precipitante.",
+                "Perguntar comorbidades, medicamentos, alergias e fatores de risco relevantes.",
+                "Buscar sinais de alarme e informações que diferenciem causas potencialmente graves.",
+            ]),
+            _mini_stage("exame", "Exame direcionado", "O que deve ser examinado de forma prioritária?", [
+                "Reavaliar sinais vitais, estado geral e perfusão/oxigenação conforme o quadro.",
+                f"Realizar exame dirigido ao sistema relacionado a {tema} e procurar sinais de gravidade.",
+                "Repetir avaliação após intervenções para documentar resposta clínica.",
+            ]),
+            _mini_stage("exames", "Exames essenciais", "Como escolher exames sem atrasar o cuidado?", [
+                "Solicitar apenas exames que confirmem hipótese, quantifiquem gravidade ou mudem conduta imediata.",
+                "Não atrasar intervenção tempo-dependente por exames que não sejam necessários para segurança.",
+                "Interpretar resultados em conjunto com evolução clínica e resposta às medidas iniciais.",
+            ]),
+            _mini_stage("conduta", "Conduta inicial", "Quais decisões são adequadas nesta fase?", [
+                (f"Reconhecer como decisão central da questão: {correta[:260]}" if correta else "Definir tratamento inicial compatível com hipótese, gravidade e segurança."),
+                "Checar contraindicações e necessidade de encaminhamento, observação ou internação.",
+                "Planejar reavaliação objetiva após a intervenção inicial.",
+            ], ["Escalonar o cuidado diante de instabilidade ou falha da resposta inicial."]),
+        ]
+    elif tipo == "obstetricia":
+        etapas = [
+            _mini_stage("abertura", "Avaliação materna inicial", "Como iniciar a avaliação obstétrica?", [
+                "Confirmar estabilidade materna, sinais vitais e presença de sinais de alarme.",
+                "Definir idade gestacional/contexto obstétrico e motivo principal do atendimento.",
+                achado_txt("Caracterizar sintoma principal e sua repercussão materna/fetal quando pertinente."),
+            ]),
+            _mini_stage("anamnese", "Anamnese obstétrica dirigida", "Quais pontos devem ser investigados?", [
+                "Caracterizar dor, sangramento, perdas, contrações, movimentos fetais e outros sintomas conforme o caso.",
+                "Revisar antecedentes obstétricos, comorbidades, medicamentos, alergias e fatores de risco.",
+                "Perguntar sinais infecciosos, urinários, hipertensivos ou outros sintomas que mudem o diagnóstico/risco.",
+            ]),
+            _mini_stage("exame", "Exame obstétrico", "Quais componentes devem ser direcionados ao caso?", [
+                "Realizar exame geral e abdominal/obstétrico compatível com idade gestacional e hipótese.",
+                "Avaliar bem-estar fetal quando aplicável ao contexto e à idade gestacional.",
+                "Realizar exame genital apenas quando indicado e seguro para a hipótese considerada.",
+            ]),
+            _mini_stage("exames", "Investigação", "Quais exames podem modificar a conduta?", [
+                "Solicitar exames laboratoriais e/ou imagem guiados pela hipótese, gravidade e idade gestacional.",
+                "Interpretar ultrassonografia e outros exames no contexto clínico, sem usar um achado isoladamente.",
+                "Considerar tipagem/Rh, hemograma ou outros exames quando o cenário clínico realmente os justificar.",
+            ]),
+            _mini_stage("conduta", "Conduta obstétrica", "Como organizar a decisão terapêutica?", [
+                (f"Reconhecer como decisão central da questão: {correta[:260]}" if correta else "Definir conduta conforme diagnóstico, estabilidade, idade gestacional e risco materno-fetal."),
+                "Definir necessidade de observação, encaminhamento, internação ou seguimento ambulatorial conforme risco.",
+                "Orientar sinais de alarme e momento de retorno/reavaliação.",
+            ]),
+        ]
+    elif tipo == "pediatria":
+        etapas = [
+            _mini_stage("abertura", "Avaliação pediátrica inicial", "Como começar a abordagem?", [
+                "Confirmar idade, peso quando necessário, sinais vitais e estado geral da criança.",
+                "Reconhecer sinais de gravidade, hidratação, perfusão e padrão respiratório/neurológico conforme o caso.",
+                achado_txt("Identificar o achado central e seu impacto na prioridade clínica."),
+            ]),
+            _mini_stage("anamnese", "História com cuidador", "Quais dados devem ser explorados?", [
+                "Caracterizar início, evolução, alimentação/hidratação, diurese e sintomas associados quando pertinentes.",
+                "Revisar antecedentes perinatais, vacinação, desenvolvimento e doenças prévias conforme o problema.",
+                "Perguntar medicamentos, alergias, exposições, contatos e tratamentos prévios relevantes.",
+            ]),
+            _mini_stage("exame", "Exame físico pediátrico", "Quais ações são apropriadas?", [
+                "Realizar exame geral e dirigido respeitando faixa etária e sinais de gravidade.",
+                f"Examinar o sistema relacionado a {tema} e buscar repercussões sistêmicas.",
+                "Reavaliar hidratação, perfusão, nível de consciência e esforço respiratório quando pertinentes.",
+            ]),
+            _mini_stage("exames", "Exames complementares", "Quando e por que investigar?", [
+                "Solicitar exames apenas se ajudarem a confirmar diagnóstico, gravidade ou decisão terapêutica.",
+                "Evitar exames desnecessários quando o diagnóstico é clínico e a criança está estável.",
+                "Interpretar resultados com valores de referência e contexto da faixa etária.",
+            ]),
+            _mini_stage("conduta", "Conduta pediátrica", "Como conduzir o caso?", [
+                (f"Reconhecer como decisão central da questão: {correta[:260]}" if correta else "Definir tratamento conforme diagnóstico, idade, peso e gravidade."),
+                "Checar necessidade de cálculo por peso, dose máxima, contraindicações e reavaliação.",
+                "Orientar cuidador sobre sinais de alarme, hidratação/alimentação e retorno.",
+            ]),
+        ]
+    elif tipo == "psiquiatria":
+        etapas = [
+            _mini_stage("seguranca", "Segurança e risco", "O que precisa ser avaliado primeiro?", [
+                "Avaliar risco imediato para si ou terceiros, agitação, capacidade de autocuidado e necessidade de ambiente protegido.",
+                "Investigar intoxicação, abstinência, delirium ou causa orgânica quando o quadro permitir essa possibilidade.",
+                "Definir necessidade de contenção ambiental/verbal e suporte urgente conforme risco.",
+            ]),
+            _mini_stage("anamnese", "Entrevista psiquiátrica", "Quais domínios devem ser explorados?", [
+                "Caracterizar sintomas, duração, prejuízo funcional, fatores precipitantes e tratamentos prévios.",
+                "Perguntar uso de substâncias, medicamentos, comorbidades, história psiquiátrica e familiar.",
+                "Explorar ideação suicida/heteroagressiva e planejamento quando clinicamente pertinente.",
+            ]),
+            _mini_stage("exame", "Exame do estado mental", "O que deve ser observado?", [
+                "Avaliar aparência/comportamento, consciência/orientação, atenção, humor/afeto e psicomotricidade.",
+                "Avaliar pensamento, sensopercepção, cognição, insight e julgamento conforme o caso.",
+                "Integrar exame mental a sinais físicos que possam sugerir causa orgânica ou intoxicação.",
+            ]),
+            _mini_stage("hipoteses", "Hipóteses e diferenciais", "Como organizar o raciocínio?", [
+                "Definir síndrome predominante antes de fechar diagnóstico nosológico.",
+                "Considerar diagnósticos psiquiátricos, uso de substâncias e causas clínicas/neurológicas relevantes.",
+                achado_txt("Usar os achados-chave para diferenciar hipóteses e gravidade."),
+            ]),
+            _mini_stage("conduta", "Plano terapêutico e segurança", "Quais decisões são adequadas?", [
+                (f"Reconhecer como decisão central da questão: {correta[:260]}" if correta else "Definir manejo compatível com diagnóstico, risco e suporte disponível."),
+                "Definir necessidade de encaminhamento urgente, internação ou acompanhamento próximo conforme risco.",
+                "Orientar paciente/rede de apoio e organizar seguimento e plano de segurança quando pertinente.",
+            ]),
+        ]
+    else:
+        # Clínica e cirurgia compartilham o mesmo esqueleto; cirurgia recebe ênfase na decisão operatória/encaminhamento.
+        etapas = [
+            _mini_stage("abertura", "Abordagem inicial", "Quais ações devem entrar na avaliação inicial?", [
+                "Confirmar estabilidade clínica e procurar sinais de gravidade antes de aprofundar a investigação.",
+                achado_txt(f"Reconhecer o problema central e priorizar a abordagem de {tema}."),
+                "Rever comorbidades, medicamentos em uso e alergias que possam modificar a conduta.",
+            ]),
+            _mini_stage("anamnese", "Anamnese dirigida", "Quais pontos você deve explorar na entrevista?", [
+                "Caracterizar início, duração, evolução e fatores de piora ou melhora dos sintomas relevantes.",
+                "Investigar sintomas associados e sinais de alarme relacionados à hipótese principal e aos diferenciais.",
+                "Perguntar antecedentes, exposições/fatores de risco, tratamentos prévios e resposta obtida.",
+                "Confirmar medicamentos em uso, adesão, alergias e contraindicações relevantes.",
+            ]),
+            _mini_stage("exame", "Exame físico", "Quais ações são adequadas no exame direcionado?", [
+                "Reavaliar sinais vitais e estado geral, procurando repercussão sistêmica ou instabilidade.",
+                f"Realizar exame físico dirigido ao sistema relacionado a {tema}, sem omitir sinais de gravidade.",
+                "Buscar achados que ajudem a diferenciar a hipótese principal de diagnósticos alternativos importantes.",
+            ]),
+            _mini_stage("hipoteses", "Hipóteses e diferenciais", "Como organizar as possibilidades diagnósticas?", [
+                "Definir hipótese principal integrando história e exame físico.",
+                "Manter diferenciais que mudem urgência, investigação ou tratamento.",
+                "Reavaliar a hipótese se surgirem dados discordantes ou evolução inesperada.",
+            ]),
+            _mini_stage("exames", "Investigação", "Como escolher exames complementares?", [
+                "Solicitar exames apenas quando responderem a pergunta clínica, avaliarem gravidade ou modificarem a conduta.",
+                "Interpretar resultados em conjunto com história e exame, evitando decisão por dado isolado.",
+                "Priorizar exames tempo-dependentes quando houver risco de deterioração ou necessidade de intervenção.",
+            ]),
+            _mini_stage("conduta", "Conduta", "Quais decisões são adequadas para conduzir o caso?", [
+                (f"Reconhecer como decisão/conduta central desta questão: {correta[:260]}" if correta else "Definir manejo compatível com hipótese, gravidade e segurança."),
+                "Checar contraindicações, interações, necessidade de ajuste e condições que mudem a estratégia escolhida.",
+                ("Definir necessidade de avaliação cirúrgica/intervenção, preparo e monitorização quando pertinente." if tipo == "cirurgia" else "Definir reavaliação/seguimento e escalonar o cuidado diante de piora ou falha da estratégia inicial."),
+            ]),
+        ]
 
-    anamnese = [
-        "Caracterizar início, duração, evolução e fatores de piora ou melhora dos sintomas relevantes.",
-        "Investigar sintomas associados e sinais de alarme relacionados à hipótese principal e aos diferenciais.",
-        "Perguntar antecedentes, exposições/fatores de risco, tratamentos prévios e resposta obtida.",
-        "Confirmar medicamentos em uso, adesão, alergias e contraindicações relevantes.",
-    ]
-    exame = [
-        "Reavaliar sinais vitais e estado geral, procurando repercussão sistêmica ou instabilidade.",
-        f"Realizar exame físico dirigido ao sistema relacionado a {tema}, sem omitir sinais de gravidade.",
-        "Buscar achados que ajudem a diferenciar a hipótese principal de diagnósticos alternativos importantes.",
-    ]
-    investig = [
-        "Solicitar exames apenas quando responderem a uma pergunta clínica, avaliarem gravidade ou modificarem a conduta.",
-        "Interpretar os resultados em conjunto com a história e o exame físico, evitando decisões por um dado isolado.",
-        "Reconsiderar diagnósticos diferenciais quando os achados forem discordantes ou a evolução não for a esperada.",
-    ]
-    conduta = []
-    if correta:
-        conduta.append(f"Reconhecer como decisão/conduta central desta questão: {correta[:260]}")
-    if primeira:
-        rot = primeira + (f" — {classe}" if classe else "")
-        conduta.append(f"Quando indicada no contexto do caso, reconhecer a primeira escolha: {rot}.")
-    conduta += [
-        "Checar contraindicações, interações, necessidade de ajuste e condições que mudem a estratégia escolhida.",
-        "Definir reavaliação/seguimento e escalonar o cuidado se houver piora, instabilidade ou falha da estratégia inicial.",
-    ]
-
-    etapas = [
-        st("abertura", "Abordagem inicial", "Quais ações devem entrar na abordagem inicial deste caso?", abertura, ["Não perder sinais de instabilidade ou gravidade."]),
-        st("anamnese", "Anamnese dirigida", "Quais pontos você deve explorar na entrevista?", anamnese),
-        st("exame", "Exame físico", "Quais ações são adequadas no exame direcionado?", exame),
-        st("exames", "Investigação e raciocínio", "Como você organiza a investigação antes da decisão final?", investig),
-        st("conduta", "Conduta", "Quais decisões são adequadas para conduzir o caso?", conduta, ["A conduta precisa ser compatível com gravidade e segurança."]),
-    ]
-    if farm_ok:
+    if tipo != "procedimento" and farm_ok:
         presc = [
-            (f"Relacionar a primeira escolha à sua classe farmacológica: {primeira} — {classe}." if primeira and classe else "Relacionar o fármaco escolhido à sua classe farmacológica e à indicação clínica."),
-            "Antes de fixar dose, via, frequência e duração, confirmar os dados clínicos necessários para uma prescrição segura.",
+            (f"Relacionar a primeira escolha à classe farmacológica: {primeira} — {classe}." if primeira and classe else "Relacionar o fármaco escolhido à sua classe farmacológica e à indicação clínica."),
+            "Antes de fixar dose, via, frequência e duração, confirmar os dados necessários para prescrição segura.",
             "Orientar uso, efeitos adversos relevantes, interações e monitorização quando pertinentes.",
         ]
-        etapas.append(st("prescricao", "Prescrição e farmacologia", "Quais ações tornam a prescrição segura e adequada?", presc, ["Não inventar dose quando faltarem dados essenciais."]))
-    else:
-        orient = [
-            "Explicar ao paciente o plano de cuidado e as medidas não farmacológicas pertinentes.",
+        etapas.append(_mini_stage("prescricao", "Prescrição e farmacologia", "Quais ações tornam a prescrição segura e adequada?", presc, ["Não inventar dose quando faltarem dados essenciais."]))
+    if not any(e["id"] == "orientacoes" for e in etapas):
+        etapas.append(_mini_stage("orientacoes", "Orientações e seguimento", "Como finalizar o atendimento com segurança?", [
+            "Explicar o plano de cuidado e medidas não farmacológicas pertinentes.",
             "Orientar sinais de alarme e quando procurar atendimento antes do retorno programado.",
             "Definir seguimento e confirmar compreensão das orientações principais.",
-        ]
-        etapas.append(st("orientacoes", "Orientações e seguimento", "Como você encerra o atendimento com segurança?", orient))
+        ]))
 
-    fechamento = [
-        f"Use o caso para treinar uma sequência clínica reproduzível: prioridade → história → exame → investigação → conduta.",
-        "A miniestação de contingência usa somente a questão e a correção já disponível; ela não substitui o módulo completo da 2ª fase.",
-    ]
     return {
         "aplicavel": True,
         "titulo": f"Miniestação: {tema}",
         "cenario": str(q.get("enunciado") or "")[:900],
         "tempo_sugerido_min": 4,
         "objetivo": f"Treinar abordagem clínica estruturada e tomada de decisão em {tema}.",
-        "instrucoes_candidato": "Selecione todas as ações que você realizaria em cada etapa. Pode haver mais de uma resposta adequada.",
-        "etapas": etapas[:7],
-        "fechamento": fechamento,
+        "instrucoes_candidato": "Selecione todas as ações que você realizaria em cada etapa. O modelo aparece imediatamente; a IA apenas contextualiza detalhes em segundo plano.",
+        "etapas": etapas[:8],
+        "fechamento": [
+            "Use uma sequência clínica reproduzível: segurança → história/exame → hipóteses → investigação → conduta → orientação.",
+            "O módulo completo de 2ª fase continua sendo a referência para treino integral de estação.",
+        ],
         "referencia": str(base.get("referencia") or farm.get("referencia") or "")[:300],
-        "fonte": "fallback_local",
-        "modo_contingencia": True,
-        "motivo_ia": str(motivo or "")[:500],
+        "fonte": "template_estatico",
+        "modo_template": True,
+        "tipo_template": tipo,
         "question_id": q.get("id"),
-        "schema_version": 3,
+        "schema_version": 4,
     }
 
 
-def gerar_mini_estacao(q: dict) -> dict:
-    """Gera miniestação contextual com IA, reparo de schema e fallback local sempre disponível."""
-    key = str(q.get("id"))
-    if key in _MINI_CACHE:
-        return dict(_MINI_CACHE[key])
+def _mini_patch_normalizar(item: dict, ids_validos: set[str]) -> dict | None:
+    if isinstance(item, dict) and isinstance(item.get("miniestacao"), dict):
+        item = item["miniestacao"]
+    if not isinstance(item, dict):
+        return None
+    etapas_out = []
+    raw_etapas = item.get("etapas") if isinstance(item.get("etapas"), list) else []
+    for raw in raw_etapas[:7]:
+        if not isinstance(raw, dict):
+            continue
+        eid = str(raw.get("id") or "").strip()
+        if eid not in ids_validos:
+            continue
+        corretas = [str(x).strip() for x in (raw.get("corretas") or []) if _texto_ok(x, 4)][:4] if isinstance(raw.get("corretas"), list) else []
+        incorretas = []
+        if isinstance(raw.get("incorretas"), list):
+            for x in raw["incorretas"][:2]:
+                if isinstance(x, str):
+                    if _texto_ok(x, 4):
+                        incorretas.append({"texto": x.strip(), "feedback": "Ação inadequada ou não prioritária neste contexto."})
+                elif isinstance(x, dict):
+                    txt = str(x.get("texto") or x.get("acao") or "").strip()
+                    if _texto_ok(txt, 4):
+                        incorretas.append({"texto": txt, "feedback": str(x.get("feedback") or x.get("justificativa") or "Ação inadequada ou não prioritária neste contexto.")[:240]})
+        criticos = [str(x).strip() for x in (raw.get("pontos_criticos") or []) if _texto_ok(x, 4)][:2] if isinstance(raw.get("pontos_criticos"), list) else []
+        if corretas or incorretas or criticos:
+            etapas_out.append({"id": eid, "corretas": corretas, "incorretas": incorretas, "pontos_criticos": criticos})
+    if not etapas_out:
+        return None
+    return {
+        "titulo": str(item.get("titulo") or "")[:140],
+        "objetivo": str(item.get("objetivo") or "")[:260],
+        "etapas": etapas_out,
+        "fechamento": [str(x).strip() for x in (item.get("fechamento") or []) if _texto_ok(x, 4)][:3] if isinstance(item.get("fechamento"), list) else [],
+        "referencia": str(item.get("referencia") or "")[:300],
+    }
 
+
+def _mini_merge_patch(base: dict, patch: dict) -> dict:
+    out = json.loads(json.dumps(base, ensure_ascii=False))
+    if patch.get("titulo"):
+        out["titulo"] = patch["titulo"]
+    if patch.get("objetivo"):
+        out["objetivo"] = patch["objetivo"]
+    byid = {e.get("id"): e for e in out.get("etapas", []) if isinstance(e, dict)}
+    for pe in patch.get("etapas", []):
+        et = byid.get(pe.get("id"))
+        if not et:
+            continue
+        existentes = {_sem_acentos(str(o.get("texto") or "")).lower() for o in et.get("opcoes", [])}
+        novas = []
+        for txt in pe.get("corretas", []):
+            k = _sem_acentos(txt).lower()
+            if k and k not in existentes:
+                novas.append({"texto": txt, "correta": True, "feedback": "Ação específica e adequada para este caso."})
+                existentes.add(k)
+        for inc in pe.get("incorretas", []):
+            txt = str(inc.get("texto") or "").strip()
+            k = _sem_acentos(txt).lower()
+            if k and k not in existentes:
+                novas.append({"texto": txt, "correta": False, "feedback": str(inc.get("feedback") or "Ação inadequada ou não prioritária neste contexto.")})
+                existentes.add(k)
+        # Conteúdo específico da IA aparece primeiro; preserva opções-base suficientes para estabilidade do treino.
+        et["opcoes"] = (novas + et.get("opcoes", []))[:8]
+        et["itens_esperados"] = [o["texto"] for o in et["opcoes"] if o.get("correta")][:6]
+        if pe.get("pontos_criticos"):
+            et["pontos_criticos"] = list(dict.fromkeys(pe["pontos_criticos"] + et.get("pontos_criticos", [])))[:4]
+    if patch.get("fechamento"):
+        out["fechamento"] = list(dict.fromkeys(patch["fechamento"] + out.get("fechamento", [])))[:5]
+    if patch.get("referencia"):
+        out["referencia"] = patch["referencia"]
+    out["fonte"] = "ia_contextual"
+    out["modo_template"] = True
+    out["enriquecido_ia"] = True
+    out["schema_version"] = 4
+    return out
+
+
+def gerar_mini_estacao(q: dict) -> dict:
+    """Retorna imediatamente o modelo estático. Não faz chamada externa."""
+    key = str(q.get("id"))
+    if key not in _MINI_CACHE:
+        _MINI_CACHE[key] = _mini_template_estatico(q)
+    return dict(_MINI_CACHE[key])
+
+
+def enriquecer_mini_estacao(q: dict) -> dict:
+    """Contextualização opcional e rápida. Nunca bloqueia a existência da miniestação."""
+    key = str(q.get("id"))
+    if key in _MINI_ENRICH_CACHE:
+        return dict(_MINI_ENRICH_CACHE[key])
+    base = gerar_mini_estacao(q)
+    ids = [str(e.get("id")) for e in base.get("etapas", []) if e.get("id")]
+    etapas_desc = "\n".join(f"- {e.get('id')}: {e.get('titulo')}" for e in base.get("etapas", []))
+    prompt = MINIESTACAO_ENRIQUECER_INSTRUCOES.replace("{etapas}", etapas_desc).replace("{questao}", fmt_questao(q))
     msgs = [
         {"role": "system", "content": MINIESTACAO_SISTEMA},
-        {"role": "user", "content": MINIESTACAO_INSTRUCOES + fmt_questao(q)},
+        {"role": "user", "content": prompt},
     ]
     motivos = []
+    max_prov = max(1, min(3, int(os.environ.get("CTI_MINI_ENRICH_MAX_PROVIDERS", "1") or 1)))
+    tentados = 0
     for p in PROVEDORES:
+        if tentados >= max_prov:
+            break
         if not p.disponivel():
             motivos.append(f"{p.nome}: pausado ({p.ultimo_erro})")
             continue
-        for tentativa in range(2):
-            try:
-                bruto = p.chamar(msgs, max_tokens=4300)
-                item = _mini_normalizar(bruto, q)
-                if item and _mini_valida(item):
-                    out = dict(item)
-                    out["fonte"] = "ia"
-                    out["modelo"] = p.modelo
-                    out["question_id"] = q.get("id")
-                    out["schema_version"] = 3
-                    if out.get("aplicavel"):
-                        out["tempo_sugerido_min"] = max(3, min(5, int(out.get("tempo_sugerido_min") or 4)))
-                    _MINI_CACHE[key] = out
-                    p.ultimo_erro = ""
-                    return dict(out)
-                p.ultimo_erro = "miniestação incompleta mesmo após normalização"
-                if tentativa == 0:
-                    continue
-            except urllib.error.HTTPError as ex:
-                body = _motivo_http(ex)
-                p.ultimo_erro = f"HTTP {ex.code}" + (f": {body[:180]}" if body else "")
-                if ex.code in (401, 403, 404):
-                    p.pausado_ate = time.time() + 600
-                    break
-                if ex.code == 429:
-                    low = body.lower().replace("_", "")
-                    pausa = 6 * 3600 if any(x in low for x in ("perday", "per day", "daily", "quota")) else _retry_after(ex, 90)
-                    p.pausado_ate = time.time() + pausa
-                    p.ultimo_erro = "cota/limite atingido"
-                    break
-                if ex.code in (500, 502, 503, 504) and tentativa == 0:
-                    time.sleep(1.5)
-                    continue
-                if ex.code in (500, 502, 503, 504):
-                    p.pausado_ate = time.time() + _retry_after(ex, 45)
-                break
-            except Exception as ex:
-                p.ultimo_erro = ex.__class__.__name__
-                if tentativa == 0:
-                    time.sleep(0.6)
-                    continue
-                p.pausado_ate = time.time() + 20
-                break
+        tentados += 1
+        try:
+            bruto = p.chamar(msgs, max_tokens=1800, timeout=min(12, p.timeout))
+            patch = _mini_patch_normalizar(bruto, set(ids))
+            if patch:
+                out = _mini_merge_patch(base, patch)
+                out["modelo"] = p.modelo
+                out["question_id"] = q.get("id")
+                _MINI_ENRICH_CACHE[key] = out
+                p.ultimo_erro = ""
+                return dict(out)
+            p.ultimo_erro = "contextualização incompleta"
+        except urllib.error.HTTPError as ex:
+            body = _motivo_http(ex)
+            p.ultimo_erro = f"HTTP {ex.code}" + (f": {body[:160]}" if body else "")
+            if ex.code == 429:
+                p.pausado_ate = time.time() + _retry_after(ex, 90)
+            elif ex.code in (500, 502, 503, 504):
+                p.pausado_ate = time.time() + _retry_after(ex, 45)
+            elif ex.code in (401, 403, 404):
+                p.pausado_ate = time.time() + 600
+        except Exception as ex:
+            p.ultimo_erro = ex.__class__.__name__
         motivos.append(f"{p.nome}: {p.ultimo_erro}")
 
-    # A miniestação nunca mais cai por indisponibilidade externa.
-    fallback = _mini_fallback_local(q, "; ".join(motivos) if motivos else "nenhum provedor disponível")
-    _MINI_CACHE[key] = fallback
-    return dict(fallback)
+    out = dict(base)
+    out["enriquecido_ia"] = False
+    out["motivo_ia"] = "; ".join(motivos)[:500] if motivos else "nenhum provedor disponível"
+    return out
 
 def status() -> dict:
     agora = time.time()

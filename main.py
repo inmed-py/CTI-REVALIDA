@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from clinical_ai import explicacao_salva, gerar_dica_ia, gerar_explicacao_ia, gerar_mini_estacao_ia, status_ia
+from clinical_ai import explicacao_salva, gerar_dica_ia, gerar_explicacao_ia, gerar_mini_estacao_ia, enriquecer_mini_estacao_ia, status_ia
 from conteudo_temas import CONTEUDO, ESTRATEGIA_POR_AREA
 from atualizacoes import AREAS as AREAS_ATUALIZACOES, buscar_atualizacoes
 from segunda_fase import catalogo as catalogo_segunda_fase, pep as pep_segunda_fase
@@ -886,6 +886,15 @@ def ia_mini_estacao(question_id: int, request: Request):
     _verificar_qtoken(request, question_id, request.headers.get("x-question-token"))
     _verificar_answer_token(request, question_id, request.headers.get("x-answer-token"))
     return gerar_mini_estacao_ia(BY_ID[question_id])
+
+
+@app.get("/api/ia-mini-estacao-enriquecer/{question_id}")
+def ia_mini_estacao_enriquecer(question_id: int, request: Request):
+    if question_id not in BY_ID:
+        raise HTTPException(404, "Questão não encontrada")
+    _verificar_qtoken(request, question_id, request.headers.get("x-question-token"))
+    _verificar_answer_token(request, question_id, request.headers.get("x-answer-token"))
+    return enriquecer_mini_estacao_ia(BY_ID[question_id])
 
 
 @app.get("/api/ia-dica/{question_id}")

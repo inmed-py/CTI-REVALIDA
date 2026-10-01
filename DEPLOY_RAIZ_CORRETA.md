@@ -28,3 +28,6 @@ O `static/app.js` contém o planner executável, `farmacologia_conduta` com clas
 
 ## v26
 Esta versão mantém os arquivos executáveis diretamente na raiz do pacote. Sobrescreva a raiz do repositório conectado à Vercel; não crie uma subpasta `v26` dentro do projeto.
+
+## v27
+A v27 mantém o mesmo padrão de deploy correto: `main.py`, `static/`, `vercel.json` e demais arquivos devem sobrescrever a **raiz** do repositório conectado à Vercel. Não crie uma pasta `v27` dentro do projeto.

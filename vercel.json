@@ -115,7 +115,7 @@
       ]
     },
     {
-      "source": "/static/cti-app-v25.js",
+      "source": "/static/cti-app-v27.js",
       "headers": [
         {
           "key": "Cache-Control",
@@ -128,7 +128,7 @@
       ]
     },
     {
-      "source": "/static/cti-app-v25.css",
+      "source": "/static/cti-app-v27.css",
       "headers": [
         {
           "key": "Cache-Control",

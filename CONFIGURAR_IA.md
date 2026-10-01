@@ -134,3 +134,16 @@ A miniestação clínica é gerada **somente quando o aluno clicar** em “Trein
 
 ## v26 — Continuidade da miniestação
 A miniestação não depende mais da disponibilidade perfeita de um único modelo. O CTI continua tentando os provedores configurados, normaliza respostas parcialmente estruturadas e, se todos falharem por cota, sobrecarga, JSON inválido ou indisponibilidade, gera um **modo contingência** com a própria questão e a correção já disponível. Assim o treino não é bloqueado por erro temporário de API.
+
+## v27 — Miniestação template-first
+A miniestação não depende mais da geração completa por LLM. O endpoint `/api/ia-mini-estacao/{id}` retorna um modelo estático do CTI imediatamente e não consome cota externa.
+
+A contextualização adicional usa `/api/ia-mini-estacao-enriquecer/{id}` em segundo plano. Por padrão, no máximo **1 provedor disponível** é chamado por miniestação, reduzindo latência, cota e risco de bloqueio.
+
+Variável opcional:
+
+```text
+CTI_MINI_ENRICH_MAX_PROVIDERS=1
+```
+
+Valores aceitos: 1 a 3. Manter `1` é recomendado para o modo de baixo custo. Mesmo se a contextualização falhar, o treino permanece funcional no modelo estático.
