@@ -90,3 +90,35 @@ Variáveis opcionais:
 - `CTI_UPDATES_GEMINI_MODELS=gemini-2.5-flash,gemini-2.5-flash-lite`
 - `CTI_UPDATES_MAX_ITEMS=80`
 - `CTI_UPDATES_DAILY_CAP=20`
+
+## v20 — módulo Farmacologia & Conduta
+
+A correção completa da IA agora usa um schema novo. Quando a questão tiver implicação terapêutica, o modelo pode devolver um quadro estruturado com:
+
+- objetivo terapêutico;
+- primeira escolha;
+- dose, via, frequência, duração e orientação de uso, **somente quando o contexto permitir definir com segurança**;
+- alternativa quando a primeira escolha estiver contraindicada;
+- medidas não farmacológicas;
+- exemplo educacional de prescrição quando houver dados suficientes;
+- mecanismo/racional, efeitos adversos, contraindicações, interações, ajustes especiais e monitorização;
+- referência farmacológica somente quando o modelo souber a fonte exata.
+
+Questões em que esse conteúdo não agrega valor devem retornar `farmacologia_conduta.aplicavel=false`, e o bloco não aparece na interface.
+
+### Proteção contra doses inventadas
+
+O prompt obriga a IA a não assumir idade, peso, função renal/hepática, gestação, gravidade ou outros dados ausentes. Se um desses dados for indispensável, a resposta deve declarar a limitação em vez de fabricar uma dose individualizada.
+
+### Cache
+
+A v20 usa um cache local separado (`cti_ia_cache_v20`). Comentários antigos continuam disponíveis no servidor como fallback, mas não bloqueiam a geração da estrutura nova. Na primeira correção completa de uma questão após o upgrade, a IA pode precisar gerar novamente o comentário.
+
+## v22 — farmacologia obrigatória quando o caso exigir
+
+A v22 corrige dois pontos da v20/v21:
+
+1. O backend agora faz uma classificação semântica conservadora da própria questão. Se enunciado ou alternativas contiverem tratamento, prescrição, dose, contraindicação, antirretrovirais, antibióticos, anticoagulantes, insulina ou outros fármacos/terapias claramente reconhecíveis, a resposta da IA só é aceita se `farmacologia_conduta.aplicavel=true`.
+2. O cache da correção completa foi elevado para `schema_version=3` e o navegador usa `cti_ia_cache_v22`. Assim, comentários v20/v21 não impedem a regeneração do novo bloco.
+
+O quadro também passou para o topo da correção, logo após o raciocínio principal e antes da análise alternativa por alternativa.

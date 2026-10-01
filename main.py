@@ -172,13 +172,13 @@ async def seguranca(request: Request, call_next):
             return JSONResponse({"detail": "Solicitação grande demais."}, status_code=413,
                                 headers={"Cache-Control": "no-store"})
 
-    if path == "/api/auth/login" and request.method == "POST":
+    if path in ("/api/auth/login", "/api/auth/recover") and request.method == "POST":
         if _limite(f"login:{_ip(request)}", LOGIN_ATTEMPTS, 900):
             _audit("login_rate_limited", request)
             return JSONResponse({"detail": "Muitas tentativas. Aguarde alguns minutos."}, status_code=429,
                                 headers={"Retry-After": "900", "Cache-Control": "no-store"})
 
-    auth_publica = path in ("/api/auth/login", "/api/auth/status", "/robots.txt")
+    auth_publica = path in ("/api/auth/login", "/api/auth/recover", "/api/auth/status", "/robots.txt")
     if AUTH_REQUIRED and path.startswith("/api/") and not auth_publica:
         if not SESSIONS.configured:
             return JSONResponse({"detail": "Acesso temporariamente indisponível."}, status_code=503,
@@ -188,18 +188,19 @@ async def seguranca(request: Request, call_next):
             return JSONResponse({"detail": "Autenticação necessária."}, status_code=401,
                                 headers={"Cache-Control": "no-store"})
 
-    private_static = {"/static/index.html", "/static/app.js", "/static/app.css"}
+    private_static = {"/static/index.html", "/static/app.js", "/static/app.css", "/static/cti-app-v23.js", "/static/cti-app-v23.css"}
     if AUTH_REQUIRED and path in private_static and not user:
         return PlainTextResponse("Not found", status_code=404)
 
-    # Double-submit + token ligado à sessão. Login é a única mutação sem sessão prévia.
-    if AUTH_REQUIRED and user and request.method in ("POST", "PUT", "PATCH", "DELETE") and path != "/api/auth/login":
+    # Double-submit + token ligado à sessão. Login e recuperação são as únicas
+    # mutações públicas sem sessão prévia.
+    if AUTH_REQUIRED and user and request.method in ("POST", "PUT", "PATCH", "DELETE") and path not in ("/api/auth/login", "/api/auth/recover"):
         if not _csrf_ok(request):
             _audit("csrf_block", request, user)
             return JSONResponse({"detail": "Solicitação inválida."}, status_code=403,
                                 headers={"Cache-Control": "no-store"})
 
-    if path.startswith("/api/") and path not in ("/api/auth/login", "/api/auth/status"):
+    if path.startswith("/api/") and path not in ("/api/auth/login", "/api/auth/recover", "/api/auth/status"):
         ident = f"u:{user.username}" if user else f"ip:{_ip(request)}"
         if RATE_LIMIT and _limite(f"api:{ident}", RATE_LIMIT, 60):
             _audit("api_rate_limited", request, user)
@@ -221,6 +222,7 @@ async def seguranca(request: Request, call_next):
 
     resp = await call_next(request)
     h = resp.headers
+    h["X-CTI-Build"] = "23.0.0"
     h["X-Content-Type-Options"] = "nosniff"
     h["Referrer-Policy"] = "strict-origin-when-cross-origin"
     h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
@@ -233,7 +235,7 @@ async def seguranca(request: Request, call_next):
         h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         if FRAME_ANCESTORS == "'none'":
             h["X-Frame-Options"] = "DENY"
-    if path.startswith("/api/") or path in ("/", "/static/index.html", "/static/login.html"):
+    if path.startswith("/api/") or path in ("/", "/static/index.html", "/static/login.html", "/static/app.js", "/static/app.css", "/static/cti-app-v23.js", "/static/cti-app-v23.css"):
         h["Cache-Control"] = "no-store, private"
         h["Pragma"] = "no-cache"
         h["Vary"] = "Cookie"
@@ -273,6 +275,11 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class RecoveryRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    recovery_code: str = Field(min_length=1, max_length=512)
+
+
 @app.get("/api/auth/status")
 def auth_status(request: Request):
     u = _user(request)
@@ -280,6 +287,7 @@ def auth_status(request: Request):
         "required": AUTH_REQUIRED,
         "configured": (SESSIONS.configured if AUTH_REQUIRED else True),
         "authenticated": bool(u) or not AUTH_REQUIRED,
+        "recovery_available": bool(SESSIONS.recovery_available) if AUTH_REQUIRED else False,
         "user": ({"username": u.username, "role": u.role} if u else None),
     }
 
@@ -307,6 +315,35 @@ def auth_login(data: LoginRequest, request: Request):
     return resp
 
 
+@app.post("/api/auth/recover")
+def auth_recover(data: RecoveryRequest, request: Request):
+    """Acesso emergencial sem banco externo.
+
+    A chave de recuperação não redefine CTI_ACCESS_PASSWORD: ela emite uma sessão
+    administrativa temporária para que o proprietário consiga entrar e então
+    trocar a senha persistente diretamente nas variáveis da Vercel.
+    """
+    if not AUTH_REQUIRED:
+        return {"ok": True, "auth_disabled": True}
+    if not SESSIONS.recovery_available:
+        _audit("recovery_unavailable", request)
+        raise HTTPException(503, "Recuperação de acesso não configurada.")
+    user = SESSIONS.recover_env_admin(data.username, data.recovery_code)
+    if not user:
+        _audit("recovery_failed", request)
+        raise HTTPException(401, "Usuário ou chave de recuperação inválidos.")
+    _audit("recovery_success", request, user)
+    resp = JSONResponse({
+        "ok": True,
+        "recovery": True,
+        "expires_in": SESSIONS.recovery_ttl,
+        "message": "Acesso temporário liberado. Atualize sua senha principal na Vercel.",
+    })
+    SESSIONS.set_cookie(resp, user, ttl=SESSIONS.recovery_ttl)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.post("/api/auth/logout")
 def auth_logout(request: Request):
     _audit("logout", request, _user(request))
@@ -330,6 +367,8 @@ def admin_security_status(request: Request):
         "rate_limit_ia_min": AI_RATE_LIMIT,
         "rate_limit_heavy_min": HEAVY_RATE_LIMIT,
         "login_attempts_15min": LOGIN_ATTEMPTS,
+        "recovery_available": bool(SESSIONS.recovery_available),
+        "recovery_ttl_seconds": SESSIONS.recovery_ttl,
         "max_body_bytes": MAX_BODY_BYTES,
         "rbac_ready": True,
         "current_store": SESSIONS.store.mode,
@@ -338,7 +377,7 @@ def admin_security_status(request: Request):
     }
 
 
-# ------------------------------------------------ administração de usuários (v16)
+# ------------------------------------------------ administração de usuários (v17)
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,50}$")
 
 

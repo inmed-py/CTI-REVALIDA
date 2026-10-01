@@ -21,6 +21,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import unicodedata
 
 LETRAS = "ABCDEFGH"
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +31,7 @@ CACHE_PATH = os.path.join(BASE, "ia_cache.json")
 SISTEMA = """Você é um médico preceptor experiente que prepara candidatos para Revalida (INEP), ENAMED, CONAREM (Paraguai) e USMLE.
 Escreva comentários em português do Brasil, específicos para a questão, tecnicamente corretos e úteis para prova.
 Baseie-se em diretrizes vigentes (Ministério da Saúde/SUS, sociedades médicas e referências internacionais reconhecidas).
+Em farmacologia, seja particularmente conservador: use nomes genéricos, diferencie esquema padrão de ajuste individual e explicite quando a dose depende de idade, peso, função renal/hepática, gestação, gravidade ou protocolo local.
 Nunca invente referência bibliográfica. Se não tiver certeza da fonte exata, deixe "referencia" vazia.
 Não use frases genéricas de tutoria. Analise o enunciado e CADA alternativa.
 Responda SOMENTE com JSON válido."""
@@ -53,6 +55,29 @@ O objeto deve ter:
  "pontos_atencao": ["2–3 pegadinhas específicas desta questão"],
  "bizu": "resumo específico para memorizar em 1–2 frases",
  "foco": ["3 fatos high-yield estritamente relacionados ao assunto desta questão"],
+ "farmacologia_conduta": {
+   "aplicavel": true/false,
+   "resumo_essencial": "1 frase com a conduta terapêutica mais útil para prova; vazio se não aplicável",
+   "objetivo_terapeutico": "objetivo clínico do tratamento",
+   "primeira_escolha": "fármaco/classe/conduta de primeira escolha; use nome genérico",
+   "dose": "dose somente quando definida com segurança pelo contexto; caso contrário, explique a limitação",
+   "via": "via de administração; vazio se não pertinente",
+   "frequencia": "intervalo/frequência; vazio se não pertinente",
+   "duracao": "duração do tratamento quando padronizada; vazio se não pertinente",
+   "orientacao_ao_paciente": "como usar/tomar e orientação prática relevante; vazio se não pertinente",
+   "alternativa_se_contraindicada": "o que fazer se a primeira escolha não puder ser usada, quando pertinente",
+   "medidas_nao_farmacologicas": ["mudanças de estilo de vida, prevenção, seguimento ou outras medidas pertinentes"],
+   "prescricao_pratica": ["linhas de exemplo de prescrição SOMENTE se o caso trouxer dados suficientes"],
+   "aprofundar": {
+     "mecanismo": "mecanismo de ação ou racional farmacológico realmente relevante",
+     "efeitos_adversos": ["principais efeitos adversos que mudam decisão/monitorização"],
+     "contraindicacoes_cuidados": ["contraindicações e precauções importantes"],
+     "interacoes": ["interações relevantes para prova/prática"],
+     "ajustes_especiais": ["ajuste renal/hepático, gestação/lactação, pediatria, idoso etc. somente quando pertinente"],
+     "monitorizacao": ["o que acompanhar durante o tratamento"]
+   },
+   "referencia": "diretriz/fonte farmacológica específica somente se tiver certeza; caso contrário, vazio"
+ },
  "referencia": "fonte principal somente se tiver certeza; caso contrário, vazio"
 }
 
@@ -66,14 +91,66 @@ Regras obrigatórias:
 - Comente TODAS as alternativas, inclusive a correta.
 - Não omita alternativas E/F/G/H quando existirem.
 
+Regras do módulo Farmacologia & Conduta:
+- Marque farmacologia_conduta.aplicavel=false em questões puramente anatômicas, diagnósticas sem implicação terapêutica, epidemiológicas, éticas ou procedimentais nas quais um quadro farmacológico não agregue valor. Nesses casos, mantenha os demais campos do módulo vazios/listas vazias.
+- Marque aplicavel=true quando a questão envolver tratamento, prescrição, prevenção medicamentosa, contraindicação, escolha entre fármacos, alternativa terapêutica, monitorização, efeitos adversos, interação, ajuste de dose ou medidas não farmacológicas relevantes.
+- NÃO invente dose, via, frequência ou duração. Se idade, peso, função renal/hepática, gestação, gravidade ou outro dado indispensável estiver ausente e isso impedir uma prescrição segura, escreva explicitamente que não é possível definir com segurança pelos dados do enunciado.
+- Em pediatria, prefira mg/kg e dose máxima apenas quando souber com segurança. Em insuficiência renal/hepática, destaque a necessidade de ajuste quando relevante.
+- Se houver contraindicação à primeira escolha, explique a alternativa e o raciocínio. Se não houver alternativa universal, diga que depende do contexto em vez de inventar.
+- Inclua medidas não farmacológicas quando elas forem parte real do manejo (alimentação, atividade física, cessação do tabagismo, educação, prevenção, seguimento etc.).
+- Em urgência/emergência, priorize estabilização e sequência de conduta antes de detalhar farmacologia de manutenção.
+- Use nomes genéricos; não use marcas comerciais.
+- prescricao_pratica é um EXEMPLO EDUCACIONAL para treino de prova/2ª fase. Só preencha quando o enunciado permitir uma prescrição coerente. Não personalize para um paciente real fora dos dados fornecidos.
+- Mantenha o módulo conciso: essencial para prova primeiro; aprofundamento apenas com informações que realmente mudam conduta ou são cobradas.
+- Nunca invente referência. Se não tiver certeza do documento/fonte exata, deixe referencia vazia.
+
 QUESTÃO:
 """
 
 
+
+_FARM_EXPLICIT = re.compile(
+    r"\b(tratament|tratamiento|terapia|farmacol|farmacolog|f[aá]rmaco|medicament|medicaci[oó]n|droga|prescri|posolog|dose|dosis|"
+    r"administra[cç][aã]o|administraci[oó]n|profilax|quimioprofilax|antibi[oó]t|antimicrob|antiviral|antirretro|tarv|"
+    r"anticoag|antiagreg|imunossupress|inmunosupres|corticoid|glucocorticoid|insulina|hipoglicem|hipoglucem|"
+    r"efeito advers|efecto advers|intera[cç][aã]o|interacci[oó]n|contraindica|ajuste de dose|ajuste de dosis)\w*\b",
+    re.I,
+)
+_FARM_DRUGS = re.compile(
+    r"\b(tenofovir|emtricitabina|dolutegravir|lamivudina|zidovudina|efavirenz|ritonavir|darunavir|raltegravir|"
+    r"metformina|insulina|heparina|enoxaparina|varfarina|warfarina|rivaroxabana|apixabana|dabigatrana|"
+    r"amoxicilina|penicilina|azitromicina|claritromicina|doxiciclina|ciprofloxacino|ceftriaxona|cefepima|meropenem|"
+    r"vancomicina|linezolida|prednisona|prednisolona|dexametasona|hidrocortisona|metotrexato|ciclofosfamida|azatioprina|"
+    r"propranolol|atenolol|metoprolol|verapamil|diltiazem|metimazol|propiltiouracil|diazepam|fenito[ií]na|"
+    r"levetiracetam|valproato|[a-záéíóúçñ]+(?:pril|sartana|olol|dipino|statina|gliflozina|gliptina|glutida|mab|nib|vir|gravir|fovir|ciclovir|cilina|ciclina|floxacino|conazol))\b",
+    re.I,
+)
+
+
+def _sem_acentos(t: str) -> str:
+    t = unicodedata.normalize("NFD", str(t or ""))
+    return "".join(c for c in t if unicodedata.category(c) != "Mn")
+
+
+def questao_farmacologica(q: dict) -> bool:
+    """Sinal conservador para impedir que a IA omita o módulo em questões terapêuticas claras."""
+    partes = [q.get("enunciado", ""), q.get("tema", ""), q.get("resposta_correta_texto", "")]
+    partes += [q.get("alt_" + l, "") for l in LETRAS]
+    txt = _sem_acentos(" ".join(str(x or "") for x in partes)).lower()
+    return bool(_FARM_EXPLICIT.search(txt) or _FARM_DRUGS.search(txt))
+
 def fmt_questao(q: dict) -> str:
     alts = "\n".join(f"{l}) {q.get('alt_' + l)}" for l in LETRAS if q.get("alt_" + l))
+    farm_sinal = questao_farmacologica(q)
+    obrig = (
+        "CLASSIFICAÇÃO CTI: conteúdo farmacológico/terapêutico DETECTADO. "
+        "Nesta questão, farmacologia_conduta.aplicavel DEVE ser true e o módulo deve ser preenchido de forma útil e concisa.\n"
+        if farm_sinal else
+        "CLASSIFICAÇÃO CTI: nenhum conteúdo farmacológico obrigatório foi detectado automaticamente; decida conforme as regras clínicas.\n"
+    )
     return (f"### id {q['id']} · {q.get('edicao','')} · Q{q.get('numero','')} · "
             f"área: {q.get('especialidade','')} · tema: {q.get('tema','')}\n"
+            f"{obrig}"
             f"{q.get('enunciado','')}\n{alts}\n"
             f"Gabarito oficial cadastrado: {q.get('gabarito_oficial','')}\n")
 
@@ -110,6 +187,20 @@ def valido(item: dict, q: dict) -> bool:
         return False
     if len(item.get("foco") or []) < 2:
         return False
+    # Schema v20: toda resposta nova declara se o módulo Farmacologia & Conduta se aplica.
+    farm = item.get("farmacologia_conduta")
+    if not isinstance(farm, dict) or not isinstance(farm.get("aplicavel"), bool):
+        return False
+    # v22: se o enunciado/alternativas contêm tratamento ou fármacos claros,
+    # não aceitamos uma resposta que silencie o módulo farmacológico.
+    if questao_farmacologica(q) and farm.get("aplicavel") is not True:
+        return False
+    if farm.get("aplicavel"):
+        if not _texto_ok(farm.get("resumo_essencial", ""), 20):
+            return False
+        # Se a IA entende que há manejo terapêutico, precisa oferecer ao menos uma direção prática.
+        if not any(_texto_ok(farm.get(k, ""), 3) for k in ("primeira_escolha", "alternativa_se_contraindicada", "objetivo_terapeutico"))                 and not (farm.get("medidas_nao_farmacologicas") or []):
+            return False
     # Bloqueia justamente os templates genéricos que motivaram a correção.
     bloco = " ".join([
         str(item.get("dica", "")), str(item.get("resumo", "")),
@@ -262,10 +353,32 @@ PRE = _carregar(PRE_PATH)
 CACHE = _carregar(CACHE_PATH)
 
 
-def salvo(q: dict):
+def salvo(q: dict, min_schema: int = 0):
+    """Retorna comentário em cache.
+
+    min_schema=3 força a estrutura v22 com detecção semântica de Farmacologia & Conduta. Isso evita que
+    comentários antigos impeçam a geração do novo módulo, sem inutilizar o cache
+    legado para a dica sem spoiler.
+    """
     for k in (str(q["id"]), str(q.get("duplicata_de") or "")):
-        if k and (k in PRE or k in CACHE):
-            return PRE.get(k) or CACHE.get(k)
+        if not k:
+            continue
+        item = CACHE.get(k) or PRE.get(k)
+        if not item:
+            continue
+        if min_schema >= 3:
+            farm = item.get("farmacologia_conduta") if isinstance(item, dict) else None
+            if int(item.get("cti_schema_version") or 0) < 3:
+                continue
+            if not (isinstance(farm, dict) and isinstance(farm.get("aplicavel"), bool)):
+                continue
+            if questao_farmacologica(q) and farm.get("aplicavel") is not True:
+                continue
+        elif min_schema >= 2:
+            farm = item.get("farmacologia_conduta") if isinstance(item, dict) else None
+            if int(item.get("cti_schema_version") or 0) < 2 and not (isinstance(farm, dict) and isinstance(farm.get("aplicavel"), bool)):
+                continue
+        return item
     return None
 
 
@@ -317,6 +430,7 @@ def gerar(q: dict):
                 if item:
                     item["id"] = q["id"]
                     item["modelo"] = p.modelo
+                    item["cti_schema_version"] = 3
                     _guardar(q, item)
                     p.ultimo_erro = ""
                     return item, None

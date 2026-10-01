@@ -19,8 +19,21 @@
 <label class="f">Usuário<input id="user" name="username" autocomplete="username" placeholder="Digite seu usuário" autocapitalize="none" spellcheck="false" autofocus required></label>
 <label class="f">Senha<input id="pass" name="password" type="password" autocomplete="current-password" required></label>
 <button class="btn" id="btn" type="submit">Entrar</button>
+<button class="linkbtn" id="forgot" type="button">Esqueci minha senha</button>
 <div class="err" id="err"></div><div class="cfg" id="cfg"></div>
 </form>
+<div class="recovery" id="recovery" hidden>
+<div class="divider"><span>Recuperar acesso</span></div>
+<p class="muted">Use sua chave de recuperação administrativa. Ela libera uma sessão temporária para você entrar e trocar a senha principal na Vercel.</p>
+<form id="recoveryForm" autocomplete="off">
+<label class="f">Usuário<input id="recoveryUser" name="recovery_username" autocomplete="username" placeholder="Digite seu usuário" autocapitalize="none" spellcheck="false" required></label>
+<label class="f">Chave de recuperação<input id="recoveryCode" name="recovery_code" type="password" autocomplete="off" required></label>
+<button class="btn secondary" id="recoveryBtn" type="submit">Recuperar acesso</button>
+<button class="linkbtn" id="backLogin" type="button">Voltar ao login</button>
+<div class="err" id="recoveryErr"></div>
+<div class="ok" id="recoveryOk"></div>
+</form>
+</div>
 </div><div class="foot">CTI · Centro de Treinamento Intensivo</div>
 </div>
 <script src="/static/login.js" defer></script></body></html>

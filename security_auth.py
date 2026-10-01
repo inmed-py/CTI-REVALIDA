@@ -1,9 +1,10 @@
 """Autenticação stateless, CSRF e tokens de escopo do CTI.
 
-v16: o SessionManager usa um adaptador de usuários. Sem Supabase configurado,
-permanece compatível com CTI_ACCESS_USERNAME/CTI_ACCESS_PASSWORD. Quando as
-variáveis do Supabase são fornecidas, a mesma camada passa a validar usuários
-persistentes sem expor a chave do banco ao navegador.
+v17: mantém o adaptador de usuários da v16 e acrescenta recuperação de acesso
+para o administrador único definido por variáveis de ambiente. A recuperação não
+altera a senha persistente: ela apenas emite uma sessão administrativa temporária,
+permitindo que o proprietário atualize CTI_ACCESS_PASSWORD na Vercel sem depender
+de banco externo.
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ import secrets
 import time
 from typing import Dict, Optional, Tuple
 
-from user_store import UserIdentity, build_user_store
+from user_store import UserIdentity, build_user_store, normalize_username
 
 
 class SessionManager:
@@ -32,12 +33,43 @@ class SessionManager:
         self._secret = hashlib.sha256(material.encode("utf-8")).digest()
         self.cookie_name = "__Host-cti_session" if prod else "cti_session"
         self.csrf_cookie_name = "cti_csrf"
+        self.recovery_username = os.environ.get("CTI_ACCESS_USERNAME", "").strip()
+        self.recovery_code = os.environ.get("CTI_RECOVERY_CODE", "")
+        self.recovery_ttl = max(300, min(int(os.environ.get("CTI_RECOVERY_TTL", "1800")), 3600))
         self.validation_cache_ttl = max(0, min(int(os.environ.get("CTI_SESSION_DB_CACHE_TTL", "30")), 300))
         self._validation_cache: Dict[str, Tuple[float, Optional[UserIdentity]]] = {}
 
     @property
     def configured(self) -> bool:
         return bool(self.store.configured and self._secret_configured)
+
+    @property
+    def recovery_available(self) -> bool:
+        # Nesta fase, recuperação é deliberadamente limitada ao administrador
+        # único por variáveis de ambiente. Quando Supabase entrar, recuperação de
+        # usuários será tratada pelo fluxo persistente próprio.
+        return bool(
+            self.store.mode == "environment-single-admin"
+            and self.configured
+            and self.recovery_username
+            and len(self.recovery_code) >= 16
+        )
+
+    def recover_env_admin(self, username: str, recovery_code: str) -> Optional[UserIdentity]:
+        # Compara usuário e código mesmo quando um deles falha para manter a
+        # resposta uniforme e evitar enumeração simples.
+        valid_user = hmac.compare_digest(
+            normalize_username(username), normalize_username(self.recovery_username)
+        )
+        supplied = recovery_code or ""
+        expected = self.recovery_code or ("_" * max(len(supplied), 16))
+        valid_code = hmac.compare_digest(supplied, expected)
+        if not (self.recovery_available and valid_user and valid_code):
+            return None
+        return UserIdentity(
+            username=self.recovery_username, role="admin", user_id="env-admin",
+            session_version=1, source="env",
+        )
 
     def _b64e(self, b: bytes) -> str:
         return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
@@ -65,8 +97,9 @@ class SessionManager:
         except Exception:
             return None
 
-    def issue(self, user: UserIdentity) -> str:
+    def issue(self, user: UserIdentity, ttl: Optional[int] = None) -> str:
         now = int(time.time())
+        token_ttl = self.ttl if ttl is None else max(300, min(int(ttl), self.ttl))
         return self._sign_payload({
             "t": "session",
             "u": user.username,
@@ -75,7 +108,7 @@ class SessionManager:
             "sv": int(user.session_version),
             "src": user.source,
             "iat": now,
-            "exp": now + self.ttl,
+            "exp": now + token_ttl,
             "v": self.version,
             "j": secrets.token_urlsafe(10),
             "c": secrets.token_urlsafe(24),
@@ -141,15 +174,16 @@ class SessionManager:
         ]
         return all(checks)
 
-    def set_cookie(self, response, user: UserIdentity) -> None:
-        token = self.issue(user)
+    def set_cookie(self, response, user: UserIdentity, ttl: Optional[int] = None) -> None:
+        cookie_ttl = self.ttl if ttl is None else max(300, min(int(ttl), self.ttl))
+        token = self.issue(user, ttl=cookie_ttl)
         csrf = self.csrf_for_session(token)
         response.set_cookie(
-            key=self.cookie_name, value=token, max_age=self.ttl, expires=self.ttl,
+            key=self.cookie_name, value=token, max_age=cookie_ttl, expires=cookie_ttl,
             path="/", secure=self.prod, httponly=True, samesite="strict",
         )
         response.set_cookie(
-            key=self.csrf_cookie_name, value=csrf or "", max_age=self.ttl, expires=self.ttl,
+            key=self.csrf_cookie_name, value=csrf or "", max_age=cookie_ttl, expires=cookie_ttl,
             path="/", secure=self.prod, httponly=False, samesite="strict",
         )
 

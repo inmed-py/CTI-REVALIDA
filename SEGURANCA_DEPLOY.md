@@ -154,3 +154,32 @@ Sem necessidade de novos ciclos de pentest agora. Nova auditoria externa faz sen
 - novos endpoints sensíveis;
 - integração de pagamentos;
 - incidente ou comportamento anormal nos logs.
+
+## v17 — recuperação administrativa sem banco externo
+
+A v17 adiciona uma rota pública controlada `/api/auth/recover` e a opção **Esqueci minha senha** na tela de login.
+
+Variáveis novas:
+
+```text
+CTI_RECOVERY_CODE=<chave forte, exclusiva, 16+ caracteres>
+CTI_RECOVERY_TTL=1800
+```
+
+A chave é validada apenas no backend e compartilha o limitador de tentativas do login. Quando correta, emite uma sessão administrativa temporária. Ela **não grava nem altera a senha persistente**: a senha normal continua sendo `CTI_ACCESS_PASSWORD` na Vercel.
+
+Consulte `RECUPERACAO_ADMIN.md` para o procedimento de reset e recuperação.
+
+
+## v19 — atualização de interface sem cache obsoleto
+- `app.js` e `app.css` passam a ser servidos com `Cache-Control: no-store, private`.
+- O HTML referencia os ativos com versão (`?v=19.1.0`) para evitar que uma implantação nova reutilize interface antiga.
+- O Service Worker usa `cti-v19-planner-visible-actions` e continua sem armazenar `app.js`, `app.css` ou conteúdo autenticado.
+
+## v20 — Farmacologia & Conduta na IA
+
+- O módulo é apenas educacional e permanece dentro do fluxo autenticado de correção, protegido pelos mesmos tokens de questão/resposta e rate limits da IA.
+- Não foram criadas rotas públicas novas.
+- Dose/via/frequência/duração são solicitadas ao modelo somente quando o contexto da questão oferece dados suficientes; o prompt manda explicitar limitações em vez de assumir parâmetros clínicos ausentes.
+- Comentários antigos não são tratados como schema v20; isso força atualização do comentário quando a IA estiver disponível, mantendo fallback legado se o provedor estiver indisponível.
+- Assets foram versionados para `20.0.0` e o Service Worker passou para `cti-v20-pharmacology-conduct`.

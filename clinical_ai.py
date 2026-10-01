@@ -472,36 +472,86 @@ def _alerta(p: dict) -> str:
     return txt
 
 
+def _txt(v) -> str:
+    return str(v or "").strip()
+
+
+def _farmacologia(p: dict):
+    """Normaliza o módulo Farmacologia & Conduta sem inventar campos ausentes."""
+    f = p.get("farmacologia_conduta")
+    if not isinstance(f, dict) or not isinstance(f.get("aplicavel"), bool):
+        return None
+    aprof = f.get("aprofundar") if isinstance(f.get("aprofundar"), dict) else {}
+    return {
+        "aplicavel": bool(f.get("aplicavel")),
+        "resumo_essencial": _txt(f.get("resumo_essencial")),
+        "objetivo_terapeutico": _txt(f.get("objetivo_terapeutico")),
+        "primeira_escolha": _txt(f.get("primeira_escolha")),
+        "dose": _txt(f.get("dose")),
+        "via": _txt(f.get("via")),
+        "frequencia": _txt(f.get("frequencia")),
+        "duracao": _txt(f.get("duracao")),
+        "orientacao_ao_paciente": _txt(f.get("orientacao_ao_paciente")),
+        "alternativa_se_contraindicada": _txt(f.get("alternativa_se_contraindicada")),
+        "medidas_nao_farmacologicas": _lista(f.get("medidas_nao_farmacologicas")),
+        "prescricao_pratica": _lista(f.get("prescricao_pratica")),
+        "aprofundar": {
+            "mecanismo": _txt(aprof.get("mecanismo")),
+            "efeitos_adversos": _lista(aprof.get("efeitos_adversos")),
+            "contraindicacoes_cuidados": _lista(aprof.get("contraindicacoes_cuidados")),
+            "interacoes": _lista(aprof.get("interacoes")),
+            "ajustes_especiais": _lista(aprof.get("ajustes_especiais")),
+            "monitorizacao": _lista(aprof.get("monitorizacao")),
+        },
+        "referencia": _txt(f.get("referencia")),
+    }
+
+
 def formatar(q: dict, p: dict) -> dict:
     gab = q.get("gabarito_oficial", "")
     por_letra = {str(a.get("letra", "")).strip().upper()[:1]: a.get("analise", "") for a in p.get("alternativas", [])}
     alts = [{"letra": l, "texto": t, "correta": (l == gab or gab == "ANULADA"), "analise": por_letra.get(l, "")}
             for l, t in alternativas(q)]
     tema = q.get("tema") or "Clínica Geral"
+    farm = _farmacologia(p)
+    import ia_provedores
+    farm_relevante = ia_provedores.questao_farmacologica(q)
     return {
         "fonte": "ia", "modelo": p.get("modelo"), "tema": tema, "area": q.get("especialidade"),
+        "schema_version": 3 if farm is not None else 1,
+        "farmacologia_relevante": farm_relevante,
         "referencia": p.get("referencia") or "",
         "resumo": p.get("resumo", ""), "achado_chave": p.get("achado_chave", ""), "conceito_cobrado": p.get("conceito_cobrado", ""),
         "porque_correta": p.get("porque_correta", ""), "alternativas": alts, "bizu": p.get("bizu", ""),
         "pontos_atencao": _lista(p.get("pontos_atencao")), "foco": _lista(p.get("foco")),
+        "farmacologia_conduta": farm,
         "gabarito": gab, "alerta_revisao": _alerta(p), "dica": p.get("dica", ""),
     }
 
 
 def explicacao_salva(q: dict):
-    """Só o que já existe (não chama API) – usado na correção, para o gabarito aparecer na hora."""
+    """Só devolve cache compatível com a detecção farmacológica v22.
+
+    Comentários antigos continuam úteis como fallback, mas não devem impedir a regeneração
+    do quadro Farmacologia & Conduta em questões terapêuticas/farmacológicas.
+    """
     import ia_provedores
-    p = ia_provedores.salvo(q)
+    p = ia_provedores.salvo(q, min_schema=3)
     return formatar(q, p) if p else None
 
 
 def gerar_explicacao_ia(q: dict) -> dict:
-    """Comentário salvo → Gemini → NVIDIA → 'indisponível'. Nunca devolve comentário genérico."""
+    """Comentário v22 salvo → LLM → fallback legado → indisponível."""
     import ia_provedores
-    p = ia_provedores.salvo(q)
+    p = ia_provedores.salvo(q, min_schema=3)
+    legado = ia_provedores.salvo(q)
     if not p:
         p, motivo = ia_provedores.gerar(q)
         if not p:
+            if legado:
+                out = formatar(q, legado)
+                out["aviso_modulo"] = "Comentário legado exibido; Farmacologia & Conduta será gerada quando a IA estiver disponível."
+                return out
             return {"fonte": "indisponivel", "tema": q.get("tema"), "gabarito": q.get("gabarito_oficial"), "motivo": motivo}
     return formatar(q, p)
 

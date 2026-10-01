@@ -165,7 +165,7 @@ class SupabaseUserStore:
             "apikey": self.secret_key,
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": "CTI-Backend/16",
+            "User-Agent": "CTI-Backend/17",
         }
         if prefer:
             h["Prefer"] = prefer
