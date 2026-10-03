@@ -188,7 +188,7 @@ async def seguranca(request: Request, call_next):
             return JSONResponse({"detail": "Autenticação necessária."}, status_code=401,
                                 headers={"Cache-Control": "no-store"})
 
-    private_static = {"/static/index.html", "/static/app.js", "/static/app.css", "/static/cti-app-v24.js", "/static/cti-app-v24.css"}
+    private_static = {"/static/index.html", "/static/app.js", "/static/app.css", "/static/cti-app-v24.js", "/static/cti-app-v24.css", "/static/cti-app-v29.js", "/static/cti-app-v29.css"}
     if AUTH_REQUIRED and path in private_static and not user:
         return PlainTextResponse("Not found", status_code=404)
 
@@ -222,7 +222,7 @@ async def seguranca(request: Request, call_next):
 
     resp = await call_next(request)
     h = resp.headers
-    h["X-CTI-Build"] = "24.0.0"
+    h["X-CTI-Build"] = "29.0.0"
     h["X-Content-Type-Options"] = "nosniff"
     h["Referrer-Policy"] = "strict-origin-when-cross-origin"
     h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
@@ -235,7 +235,7 @@ async def seguranca(request: Request, call_next):
         h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         if FRAME_ANCESTORS == "'none'":
             h["X-Frame-Options"] = "DENY"
-    if path.startswith("/api/") or path in ("/", "/static/index.html", "/static/login.html", "/static/app.js", "/static/app.css", "/static/cti-app-v24.js", "/static/cti-app-v24.css"):
+    if path.startswith("/api/") or path in ("/", "/static/index.html", "/static/login.html", "/static/app.js", "/static/app.css", "/static/cti-app-v24.js", "/static/cti-app-v24.css", "/static/cti-app-v29.js", "/static/cti-app-v29.css"):
         h["Cache-Control"] = "no-store, private"
         h["Pragma"] = "no-cache"
         h["Vary"] = "Cookie"
@@ -716,9 +716,82 @@ def get_questions_batch(data: BatchQuestionsRequest, request: Request):
     return {"items": [publico_full(BY_ID[i], request) for i in ordem]}
 
 
+class ExamFocus(BaseModel):
+    exame: str = Field(min_length=1, max_length=80)
+    peso: float = Field(1.0, gt=0, le=100)
+
+
+def _focos_validos(focos: List[ExamFocus]) -> List[ExamFocus]:
+    """Normaliza no máximo 3 provas em foco, remove duplicatas e exames inexistentes."""
+    disponiveis = {q.get("exame") for q in POOL_SEM_IMG}
+    out, vistos = [], set()
+    for f in focos[:3]:
+        ex = (f.exame or "").strip()
+        if not ex or ex in vistos or ex not in disponiveis:
+            continue
+        vistos.add(ex)
+        out.append(ExamFocus(exame=ex, peso=max(0.01, float(f.peso))))
+    return out
+
+
+def _cotas_focos(n: int, focos: List[ExamFocus], itens: List[dict]) -> Dict[str, int]:
+    """Converte pesos em cotas inteiras e redistribui sobras quando uma prova não tem itens suficientes."""
+    if not focos or n <= 0:
+        return {}
+    disp = {f.exame: sum(1 for q in itens if q.get("exame") == f.exame) for f in focos}
+    total_peso = sum(f.peso for f in focos) or 1.0
+    bruto = {f.exame: n * f.peso / total_peso for f in focos}
+    cotas = {f.exame: min(disp[f.exame], int(bruto[f.exame])) for f in focos}
+    falta = n - sum(cotas.values())
+    # Primeiro distribui pelo maior resto fracionário, depois por capacidade/peso.
+    ordem = sorted(focos, key=lambda f: (bruto[f.exame] - int(bruto[f.exame]), f.peso), reverse=True)
+    while falta > 0:
+        mudou = False
+        for f in ordem:
+            ex = f.exame
+            if cotas[ex] < disp[ex]:
+                cotas[ex] += 1
+                falta -= 1
+                mudou = True
+                if falta <= 0:
+                    break
+        if not mudou:
+            break
+    return cotas
+
+
+def _selecionar_por_focos(itens: List[dict], n: int, focos: List[ExamFocus], rng: random.Random,
+                           ordem: str = "aleatoria") -> List[dict]:
+    focos = _focos_validos(focos)
+    if not focos:
+        xs = list(itens)
+        if ordem == "aleatoria":
+            rng.shuffle(xs)
+        else:
+            xs.sort(key=lambda x: (str(x.get("edicao", "")), int(x.get("numero") or 0)))
+        return xs[:n]
+    permitidos = {f.exame for f in focos}
+    xs = [q for q in itens if q.get("exame") in permitidos]
+    cotas = _cotas_focos(min(n, len(xs)), focos, xs)
+    escolhidas = []
+    for f in focos:
+        grupo = [q for q in xs if q.get("exame") == f.exame]
+        if ordem == "aleatoria":
+            rng.shuffle(grupo)
+        else:
+            grupo.sort(key=lambda x: (str(x.get("edicao", "")), int(x.get("numero") or 0)))
+        escolhidas.extend(grupo[:cotas.get(f.exame, 0)])
+    if ordem == "aleatoria":
+        rng.shuffle(escolhidas)
+    else:
+        escolhidas.sort(key=lambda x: (str(x.get("exame", "")), str(x.get("edicao", "")), int(x.get("numero") or 0)))
+    return escolhidas[:n]
+
+
 class SimuladoRequest(BaseModel):
     n: int = Field(20, ge=1, le=100)
     exame: Optional[str] = None
+    focos: List[ExamFocus] = Field(default_factory=list, max_length=3)
     edicao: Optional[str] = None
     especialidade: Optional[str] = None
     tema: Optional[str] = None
@@ -730,40 +803,51 @@ class SimuladoRequest(BaseModel):
 
 @app.post("/api/simulado")
 def criar_simulado(req: SimuladoRequest, request: Request):
+    # Um exame escolhido manualmente tem precedência. Sem exame explícito, usa até 3 provas em foco.
     itens = filtrar(POOL_SEM_IMG, req.exame, req.edicao, req.especialidade, req.tema)
+    focos = [] if req.exame else _focos_validos(req.focos)
+    if focos:
+        permitidos = {f.exame for f in focos}
+        itens = [q for q in itens if q.get("exame") in permitidos]
     if req.apenas_novas and req.vistas:
         vistos = set(req.vistas)
         itens = [q for q in itens if q["id"] not in vistos] + [q for q in itens if q["id"] in vistos]
     else:
         itens = list(itens)
-    if req.ordem == "aleatoria":
-        random.Random(req.seed or str(time.time_ns())).shuffle(itens)
-    else:
-        itens.sort(key=lambda x: (str(x.get("edicao", "")), int(x.get("numero") or 0)))
-    escolhidas = itens[:req.n]
+    rng = random.Random(req.seed or str(time.time_ns()))
+    escolhidas = _selecionar_por_focos(itens, req.n, focos, rng, req.ordem)
     _question_delivery_guard(request, len(escolhidas))
-    return {"total_disponivel": len(itens), "items": [publico_full(q, request) for q in escolhidas]}
+    composicao = {}
+    for q in escolhidas:
+        composicao[q.get("exame")] = composicao.get(q.get("exame"), 0) + 1
+    return {"total_disponivel": len(itens), "composicao": composicao,
+            "items": [publico_full(q, request) for q in escolhidas]}
 
 
 class MissaoRequest(BaseModel):
     data: Optional[str] = None                 # AAAA-MM-DD (semente do dia)
-    vistas: List[int] = []                     # ids já respondidos em missões anteriores
+    vistas: List[int] = Field(default_factory=list, max_length=1200)
     n: int = Field(15, ge=1, le=60)
     modo: str = "equilibrada"                  # equilibrada | fraquezas | area
-    pesos: Dict[str, float] = {}               # área/tema -> peso (modo fraquezas)
+    pesos: Dict[str, float] = Field(default_factory=dict)
     especialidade: Optional[str] = None
     tema: Optional[str] = None
     exame: Optional[str] = None
+    focos: List[ExamFocus] = Field(default_factory=list, max_length=3)
     semente_usuario: str = ""
 
 
 @app.post("/api/missao")
 def missao(req: MissaoRequest, request: Request):
-    """15 questões inéditas por dia. Nunca repete ids já vistos; quando o banco se esgota, recomeça o ciclo."""
+    """Missão diária com suporte a até 3 provas em foco e pesos relativos."""
     dia = req.data or date.today().isoformat()
     rng = random.Random(f"{dia}-{req.semente_usuario}")
+    focos = [] if req.exame else _focos_validos(req.focos)
     base = filtrar(POOL_SEM_IMG, req.exame, None, req.especialidade if req.modo == "area" else None,
                    req.tema if req.modo == "area" else None)
+    if focos:
+        permitidos = {f.exame for f in focos}
+        base = [q for q in base if q.get("exame") in permitidos]
     vistas = set(req.vistas)
     ineditas = [q for q in base if q["id"] not in vistas]
     ciclo_reiniciado = False
@@ -772,35 +856,61 @@ def missao(req: MissaoRequest, request: Request):
         ineditas = ineditas + [q for q in base if q["id"] in vistas]
     n = min(req.n, len(ineditas))
     escolhidas: List[dict] = []
-    if req.modo == "fraquezas" and req.pesos:
-        # amostragem ponderada sem reposição: áreas/temas com menor acerto recebem mais questões
-        pool = list(ineditas)
-        while pool and len(escolhidas) < n:
-            pesos = [max(0.05, req.pesos.get(q["tema"], req.pesos.get(q["especialidade"], 1.0))) for q in pool]
-            i = rng.choices(range(len(pool)), weights=pesos, k=1)[0]
-            escolhidas.append(pool.pop(i))
-    elif req.modo == "area":
-        rng.shuffle(ineditas)
-        escolhidas = ineditas[:n]
-    else:
-        # equilibrada: distribuição proporcional ao peso das áreas nas provas (round-robin por área)
+
+    def seleciona_grupo(pool: List[dict], k: int) -> List[dict]:
+        if k <= 0 or not pool:
+            return []
+        if req.modo == "fraquezas" and req.pesos:
+            xs, out = list(pool), []
+            while xs and len(out) < k:
+                ws = [max(0.05, req.pesos.get(q["tema"], req.pesos.get(q["especialidade"], 1.0))) for q in xs]
+                i = rng.choices(range(len(xs)), weights=ws, k=1)[0]
+                out.append(xs.pop(i))
+            return out
+        if req.modo == "area":
+            xs = list(pool); rng.shuffle(xs); return xs[:k]
+        # equilibrada: tenta preservar a distribuição das grandes áreas dentro de cada prova.
         por_area: Dict[str, List[dict]] = {}
-        for q in ineditas:
+        for q in pool:
             por_area.setdefault(q["especialidade"], []).append(q)
         for lst in por_area.values():
             rng.shuffle(lst)
-        cotas = {"Clínica Médica": 4, "Cirurgia Geral": 3, "Pediatria": 3, "Ginecologia e Obstetrícia": 3, "Medicina Preventiva e Coletiva": 2}
-        for area, k in cotas.items():
-            escolhidas += por_area.get(area, [])[:k]
-        restantes = [q for lst in por_area.values() for q in lst if q not in escolhidas]
+        base_cotas = {"Clínica Médica": 4, "Cirurgia Geral": 3, "Pediatria": 3,
+                      "Ginecologia e Obstetrícia": 3, "Medicina Preventiva e Coletiva": 2}
+        out = []
+        total_base = sum(base_cotas.values())
+        raw = {a: k * v / total_base for a, v in base_cotas.items()}
+        cotas = {a: int(v) for a, v in raw.items()}
+        falta = k - sum(cotas.values())
+        for a in sorted(raw, key=lambda a: raw[a] - int(raw[a]), reverse=True):
+            if falta <= 0:
+                break
+            cotas[a] += 1; falta -= 1
+        for area, c in cotas.items():
+            out.extend(por_area.get(area, [])[:c])
+        restantes = [q for lst in por_area.values() for q in lst if q not in out]
         rng.shuffle(restantes)
-        escolhidas += restantes[: max(0, n - len(escolhidas))]
-        escolhidas = escolhidas[:n]
+        out.extend(restantes[:max(0, k - len(out))])
+        out = out[:k]; rng.shuffle(out)
+        return out
+
+    if focos:
+        cotas = _cotas_focos(n, focos, ineditas)
+        for f in focos:
+            grupo = [q for q in ineditas if q.get("exame") == f.exame]
+            escolhidas.extend(seleciona_grupo(grupo, cotas.get(f.exame, 0)))
         rng.shuffle(escolhidas)
+    else:
+        escolhidas = seleciona_grupo(ineditas, n)
+
     _question_delivery_guard(request, len(escolhidas))
+    composicao = {}
+    for q in escolhidas:
+        composicao[q.get("exame")] = composicao.get(q.get("exame"), 0) + 1
     return {"data": dia, "modo": req.modo, "ciclo_reiniciado": ciclo_reiniciado,
             "ineditas_restantes": max(0, len([q for q in base if q["id"] not in vistas]) - n),
-            "total_disponivel": len(base), "items": [publico_full(q, request) for q in escolhidas]}
+            "total_disponivel": len(base), "composicao": composicao,
+            "items": [publico_full(q, request) for q in escolhidas]}
 
 
 class AnswerRequest(BaseModel):

@@ -1,7 +1,7 @@
 /* CTi – Service Worker privado
    Segurança > offline: NÃO armazena HTML autenticado, questões, gabaritos ou respostas de IA.
    Apenas ativos públicos (ícones, fontes, imagens) ficam em cache. */
-const VERSAO = 'cti-v28-mini-osce-context-guard';
+const VERSAO = 'cti-v29-multi-focus-route';
 const SHELL = `${VERSAO}-public`;
 const ARQUIVOS = [
   '/static/offline.html', '/static/manifest.json', '/static/fonts/inter-latin.woff2',

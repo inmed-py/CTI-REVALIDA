@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CTi">
 <meta name="mobile-web-app-capable" content="yes">
-<link rel="stylesheet" href="/static/app.css?v=28.0.0">
+<link rel="stylesheet" href="/static/app.css?v=29.0.0">
 </head>
 <body>
 <!-- ====== Ícones (traço fino, estilo da identidade) ====== -->
@@ -233,7 +233,7 @@
       <button data-m="area"><b><svg class="i"><use href="#i-steth"/></svg>Por área</b><span class="small muted">Treine só uma área (ex.: só Ginecologia) ou um tema específico</span></button>
     </div>
     <div class="row" style="margin-top:12px">
-      <label class="f">Prova de origem<select id="mExame"></select></label>
+      <label class="f">Prova de origem<select id="mExame"></select><span class="tiny muted">Se deixar “Todas”, usa automaticamente suas Provas em foco da Trilha.</span></label>
       <label class="f" id="mAreaWrap" hidden>Área<select id="mArea"></select></label>
       <label class="f" id="mTemaWrap" hidden>Tema<select id="mTema"></select></label>
     </div>
@@ -341,10 +341,19 @@
 <section class="view" id="view-reforco">
   <div class="banner"><div class="kick">Trilhas de estudo</div><h2>Planner e reforço de conteúdo</h2><p>Gerado a partir do seu desempenho: temas mais fracos primeiro, revisões espaçadas dos erros e simulado semanal.</p></div>
   <div class="card">
-    <div class="planner-title-row"><h2><svg class="i"><use href="#i-cal"/></svg>Planner de estudos sugerido</h2><span class="planner-live-badge">Treino em 1 clique · v24</span></div>
+    <div class="planner-title-row"><h2><svg class="i"><use href="#i-cal"/></svg>Planner de estudos sugerido</h2><span class="planner-live-badge">Multi-foco inteligente · v29</span></div>
     <p class="muted small planner-intro">Cada atividade abaixo abre diretamente o treino correspondente. Você não precisa voltar ao banco de questões para configurar filtros manualmente.</p>
-    <div class="row">
-      <label class="f">Data da prova (opcional)<input type="date" id="pProva"></label>
+    <div class="exam-focus-box">
+      <div class="exam-focus-head">
+        <div><b>Provas em foco</b><span class="small muted">Selecione até 3. O CTI cruza relevância, desempenho e sobreposição de temas para montar uma única rota.</span></div>
+        <button class="btn sec sm" id="pFocusEqual" type="button">Equilibrar pesos</button>
+      </div>
+      <div class="exam-focus-chips" id="pFocusChips"></div>
+      <div class="exam-focus-weights" id="pFocusWeights"></div>
+      <div class="exam-focus-summary" id="pFocusSummary"></div>
+    </div>
+    <div class="row planner-config-row">
+      <label class="f">Data-alvo da rota (opcional)<input type="date" id="pProva"></label>
       <label class="f">Tempo disponível por dia<select id="pHoras"><option value="1">1 hora</option><option value="2" selected>2 horas</option><option value="3">3 horas</option><option value="4">4+ horas</option></select></label>
       <div id="pCountdown" class="kpi" style="flex:1;min-width:160px"></div>
     </div>
@@ -532,6 +541,6 @@
 </dialog>
 <div class="toast" id="toast"></div>
 
-<script src="/static/app.js?v=28.0.0" defer></script>
+<script src="/static/app.js?v=29.0.0" defer></script>
 </body>
 </html>

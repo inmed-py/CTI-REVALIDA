@@ -34,3 +34,6 @@ A v27 mantém o mesmo padrão de deploy correto: `main.py`, `static/`, `vercel.j
 
 ## v28
 Sobrescreva novamente a raiz do repositório conectado à Vercel. O cache da miniestação mudou para `cti_mini_estacoes_v28` e os assets estão versionados como 28.0.0.
+
+## v29 — atenção
+O pacote v29 continua preparado para sobrescrever **diretamente a raiz** do repositório conectado à Vercel. Não envie o ZIP como uma subpasta versionada dentro do projeto.
